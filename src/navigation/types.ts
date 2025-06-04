@@ -21,11 +21,10 @@ export type RootStackParamList = {
   TrainerDashboard: undefined;
   Data: undefined;
   EditDataMentoring: {data: any};
-  AddDataMentoring: {data: any};
-  FormDigger: undefined;
-  FormHauler: undefined;
-  FormBuldozer: undefined;
-  FormGrader: undefined;
+  FormDigger: {unitType: string};
+  FormHauler: {unitType: string};
+  FormBuldozer: {unitType: string};
+  FormGrader: {unitType: string};
   TrainHours: undefined;
   DailyActivity: undefined;
 };

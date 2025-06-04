@@ -246,4 +246,12 @@ export const editDataStyles = StyleSheet.create({
     color: '#374151',
     fontWeight: '500',
   },
+  operatorBox: {
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 20,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
 });

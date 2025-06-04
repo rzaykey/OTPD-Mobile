@@ -61,10 +61,16 @@ const FullDashboard = ({navigation}: Props) => {
 
   const handleItemPress = (item: string) => {
     if (item === 'Tambah Mentoring') {
-      setShowMentoringForms(prev => !prev); // toggle tampilan form-form
+      setShowMentoringForms(prev => !prev);
+    } else if (item.startsWith('Form')) {
+      // Ambil unitType dari nama tombol (misalnya: "Form Grader" -> "grader")
+      const unitType = item.replace('Form ', '').toUpperCase();
+      navigation.navigate('AddDataMentoring', {
+        data: {unitType},
+      });
     } else {
-      const screenName = item.replace(/\s+/g, '');
-      navigation.navigate(screenName as keyof RootStackParamList);
+      const screenName = item.replace(/\s+/g, '') as keyof RootStackParamList;
+      navigation.navigate(screenName);
     }
   };
 
@@ -164,10 +170,9 @@ const FullDashboard = ({navigation}: Props) => {
             {showMentoringForms && (
               <FlatList
                 data={[
-                  'Add Data Mentoring',
                   'Form Digger',
                   'Form Hauler',
-                  'Form Buldozer',
+                  'Form Bulldozer',
                   'Form Grader',
                 ]}
                 keyExtractor={(item, index) => `${item}-${index}`}

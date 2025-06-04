@@ -6,7 +6,6 @@ import {
   Platform,
   TouchableOpacity,
   TextInput,
-  FlatList,
   ScrollView,
 } from 'react-native';
 import axios from 'axios';
@@ -19,6 +18,9 @@ import {editDataStyles as styles} from '../styles/editDataStyles';
 import {pickerSelectStyles} from '../styles/pickerSelectStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useNavigation} from '@react-navigation/native';
+import {RootStackParamList} from '../navigation/types';
+
+type Props = NativeStackScreenProps<RootStackParamList, 'AddDataMentoring'>;
 
 // --- Type definitions ---
 type IndicatorDetail = {
@@ -89,7 +91,7 @@ const ToggleCard: React.FC<ToggleCardProps> = ({
   );
 };
 
-const AddDataMentoring = () => {
+const AddDataMentoring = ({route}: Props) => {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
 
@@ -124,7 +126,10 @@ const AddDataMentoring = () => {
     {label: string; value: string}[]
   >([]);
 
-  const [unitType, setUnitType] = useState<string | null>(null);
+  // const [unitType, setUnitType] = useState<string | null>(null);
+  const {data} = route.params;
+  const {unitType} = data;
+
   const [unitModel, setUnitModel] = useState<string | null>(null);
   const [unitNumber, setUnitNumber] = useState<string | null>(null);
 
@@ -134,6 +139,7 @@ const AddDataMentoring = () => {
   const [visibleCategories, setVisibleCategories] = useState<{
     [key: string]: boolean;
   }>({});
+
   const [expanded, setExpanded] = useState(true);
   const [indicators, setIndicators] = useState<IndicatorList>({});
   // const [editableDetails, setEditableDetails] = useState<IndicatorDetail[]>([]);
@@ -151,20 +157,23 @@ const AddDataMentoring = () => {
     }
   }, [unitType]);
 
-  const fetchIndicatorsByType = async (selectedUnitType: string) => {
+  const fetchIndicatorsByType = async (unitType: string) => {
     try {
-      const upperType = selectedUnitType.toUpperCase();
+      const upperType = unitType.toUpperCase();
       const response = await fetch(
         `http://10.0.2.2:8000/api/mentoring/createData?type_mentoring=${upperType}`,
       );
       const result = await response.json();
-      if (result.success && result.data && result.data.indicators) {
-        setIndicators(result.data.indicators); // Sudah group by indicator_type
+
+      if (result.success && typeof result?.data?.indicators === 'object') {
+        setIndicators(result.data.indicators); // format { [indicator_type]: IndicatorItem[] }
       } else {
-        console.warn('Unexpected indicator format:', result);
+        console.warn('Format indikator tidak sesuai:', result);
+        setIndicators({});
       }
     } catch (err) {
-      console.error('Failed fetching indicators', err);
+      console.error('Gagal mengambil indikator:', err);
+      setIndicators({});
     }
   };
 
@@ -189,39 +198,30 @@ const AddDataMentoring = () => {
     fetchUser();
   }, []);
 
+  // FETCH SEMUA DATA YANG TIDAK TERGANTUNG UNIT TYPE
   useEffect(() => {
     const fetchData = async () => {
       try {
         const res = await axios.get(
-          `http://10.0.2.2:8000/api/mentoring/createData`,
+          'http://10.0.2.2:8000/api/mentoring/createData',
         );
         const {
           header,
           siteList: site_list,
-          models: model_unit, // <- rename sesuai API
-          units: unit, // <- rename sesuai API
-          indicators,
+          models: model_unit,
+          units: unit,
           details,
         } = res.data?.data || {};
 
         if (!header) {
           console.log('Header kosong, create mode aktif');
-          console.log('Data from API:', res.data);
           setHeaderData(header);
-          const {siteList: apiSiteList} = res.data.data || {};
-          if (apiSiteList) {
-            setRawSiteList(apiSiteList); // Simpan data mentah dulu
-          }
-          // Tetap lanjut, karena ini memang mode create
-        } else {
-          // Isi data default dari header jika ada (misalnya untuk edit mode)
         }
+
         setRawSiteList(site_list || []);
         setModelUnitRaw(model_unit || []);
         setUnitRaw(unit || []);
-        setIndicators(indicators || {});
         setEditableDetails(details || []);
-        // penilaian kosong kalau create data baru
         setPoints({});
       } catch (error) {
         console.error('Fetch data error:', error);
@@ -667,10 +667,11 @@ const AddDataMentoring = () => {
       contentContainerStyle={{paddingBottom: 40}}
       keyboardShouldPersistTaps="handled">
       <View style={styles.container}>
-        <Text style={styles.title}>Edit Data Mentoring</Text>
+        <Text style={styles.title}>Tambah Data Mentoring {unitType}</Text>
 
         {/* Header */}
         <View style={styles.card}>
+          {/* TOGGLE HEADER */}
           <TouchableOpacity
             style={styles.toggleButton}
             onPress={() => setExpanded(!expanded)}>
@@ -682,8 +683,10 @@ const AddDataMentoring = () => {
             <Text style={styles.sectionTitle}>Header</Text>
           </TouchableOpacity>
 
+          {/* EXPANDABLE CONTENT */}
           {expanded && (
             <View style={styles.sectionContent}>
+              {/* ROW: Trainer Info */}
               <View style={styles.row}>
                 <View style={styles.half}>
                   <Text style={styles.label}>Trainer JDE</Text>
@@ -703,7 +706,8 @@ const AddDataMentoring = () => {
                 </View>
               </View>
 
-              <View style={{padding: 16}}>
+              {/* OPERATOR SECTION */}
+              <View style={{padding: 1}}>
                 <Text style={{fontSize: 16, marginBottom: 8}}>Operator</Text>
                 <TextInput
                   placeholder="Cari Operator JDE"
@@ -726,14 +730,32 @@ const AddDataMentoring = () => {
                   </View>
                 )}
 
-                <Text style={{marginTop: 20, fontSize: 16}}>
-                  Operator JDE: {operatorJDE}
-                </Text>
-                <Text style={{fontSize: 16}}>
-                  Nama Operator: {operatorName}
-                </Text>
+                {/* Selected Operator Info */}
+                <View style={styles.operatorBox}>
+                  <Text style={{fontSize: 16, marginBottom: 8}}>
+                    Operator JDE: {operatorJDE}
+                  </Text>
+                  <View
+                    style={{
+                      height: 1,
+                      backgroundColor: '#e0e0e0',
+                      marginVertical: 8,
+                    }}
+                  />
+                  <Text style={{fontSize: 16}}>
+                    Nama Operator: {operatorName}
+                  </Text>
+                </View>
               </View>
 
+              <View
+                style={{
+                  height: 1,
+                  backgroundColor: '#e0e0e0',
+                  marginVertical: 12,
+                }}
+              />
+              {/* ROW: Site & Lokasi */}
               <View style={styles.row}>
                 <View style={styles.half}>
                   <Text style={styles.label}>Site</Text>
@@ -761,23 +783,17 @@ const AddDataMentoring = () => {
 
         {/* Unit dan Waktu */}
         <ToggleCard title="Unit dan Waktu" defaultExpanded={true}>
+          {/* Informasi Unit Type dari route */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Unit Type</Text>
-            <RNPickerSelect
-              onValueChange={setUnitType}
-              items={unitTypes}
-              value={unitType}
-              placeholder={{label: 'Pilih Tipe Unit', value: null}}
-              style={pickerSelectStyles}
-              useNativeAndroidPickerStyle={false}
-              Icon={() => (
-                <Icon name="chevron-down" size={20} color="#9ca3af" />
-              )}
-            />
+            <Text style={styles.label}>Tipe Unit</Text>
+            <View style={styles.staticInput}>
+              <Text style={styles.staticText}>{unitType}</Text>
+            </View>
           </View>
 
+          {/* Unit Model */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Unit Model</Text>
+            <Text style={styles.label}>Model Unit</Text>
             <RNPickerSelect
               onValueChange={setUnitModel}
               items={modelUnits}
@@ -791,13 +807,14 @@ const AddDataMentoring = () => {
             />
           </View>
 
+          {/* Unit Number */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Unit Number</Text>
+            <Text style={styles.label}>Nomor Unit</Text>
             <RNPickerSelect
               onValueChange={setUnitNumber}
               items={unitNumbers}
               value={unitNumber}
-              placeholder={{label: 'Pilih Unit Number', value: null}}
+              placeholder={{label: 'Pilih Nomor Unit', value: null}}
               style={pickerSelectStyles}
               useNativeAndroidPickerStyle={false}
               Icon={() => (
@@ -806,7 +823,9 @@ const AddDataMentoring = () => {
             />
           </View>
 
+          {/* Waktu dan Tanggal */}
           <View style={styles.timeDateGroup}>
+            {/* Tanggal */}
             <View style={styles.timeDateInput}>
               <Text style={styles.label}>Tanggal</Text>
               <TouchableOpacity
@@ -827,6 +846,7 @@ const AddDataMentoring = () => {
               )}
             </View>
 
+            {/* Waktu Mulai */}
             <View style={styles.timeDateInput}>
               <Text style={styles.label}>Waktu Mulai</Text>
               <TouchableOpacity
@@ -850,6 +870,7 @@ const AddDataMentoring = () => {
               )}
             </View>
 
+            {/* Waktu Selesai */}
             <View style={styles.timeDateInput}>
               <Text style={styles.label}>Waktu Selesai</Text>
               <TouchableOpacity
@@ -878,60 +899,100 @@ const AddDataMentoring = () => {
         {/* Indicators */}
         <ToggleCard title="Indikator Mentoring" defaultExpanded={true}>
           {Object.entries(indicators).map(([kategori, list]) => (
-            <View key={kategori} style={{marginBottom: 16}}>
-              <Text style={styles.sectionTitle}>{kategori}</Text>
-              {list.map(ind => {
-                const detail =
-                  editableDetails.find(d => d.fid_indicator === ind.id) || {};
+            <View key={kategori} style={styles.indicatorCategory}>
+              {/* KATEGORI HEADER (DITEKAN UNTUK SHOW/HIDE) */}
+              <TouchableOpacity
+                onPress={() => toggleCategoryVisibility(kategori)}
+                style={styles.categoryHeader}>
+                <Text style={styles.categoryTitle}>{kategori}</Text>
+                <Icon
+                  name={
+                    visibleCategories[kategori] ? 'chevron-up' : 'chevron-down'
+                  }
+                  size={18}
+                  color="#6b7280"
+                />
+              </TouchableOpacity>
 
-                return (
-                  <View key={ind.id} style={styles.indicatorDetail}>
-                    <Text style={styles.indicatorParam}>• {ind.param1}</Text>
-                    <Text style={styles.indicatorParam}>• {ind.param2}</Text>
+              {/* DETAIL INDIKATOR */}
+              {visibleCategories[kategori] && (
+                <>
+                  {list.map(ind => {
+                    const detail = editableDetails.find(
+                      d => String(d.fid_indicator) === String(ind.id),
+                    ) || {
+                      is_observasi: '0',
+                      is_mentoring: '0',
+                      note_observasi: '',
+                      fid_indicator: ind.id,
+                    };
 
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Observasi:</Text>
-                      <CheckBox
-                        value={detail.is_observasi === '1'}
-                        onValueChange={() =>
-                          toggleCheckbox(ind.id, 'is_observasi')
-                        }
-                      />
-                    </View>
+                    return (
+                      <View key={ind.id} style={styles.indicatorItem}>
+                        <Text style={styles.indicatorParam}>
+                          • {ind.param1}
+                        </Text>
+                        <Text style={styles.indicatorParam}>
+                          • {ind.param2}
+                        </Text>
 
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Mentoring:</Text>
-                      <CheckBox
-                        value={detail.is_mentoring === '1'}
-                        onValueChange={() =>
-                          toggleCheckbox(ind.id, 'is_mentoring')
-                        }
-                      />
-                    </View>
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Observasi:</Text>
+                          <CheckBox
+                            value={detail.is_observasi === '1'}
+                            onValueChange={() =>
+                              toggleCheckbox(
+                                detail.fid_indicator,
+                                'is_observasi',
+                              )
+                            }
+                          />
+                        </View>
 
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Catatan:</Text>
-                      <TextInput
-                        style={[
-                          styles.detailValue,
-                          {
-                            borderWidth: 1,
-                            borderColor: '#ccc',
-                            padding: 5,
-                            borderRadius: 5,
-                            flex: 1,
-                            minHeight: 40,
-                          },
-                        ]}
-                        multiline
-                        placeholder="Masukkan catatan..."
-                        value={detail.note_observasi || ''}
-                        onChangeText={text => updateNote(ind.id, text)}
-                      />
-                    </View>
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Mentoring:</Text>
+                          <CheckBox
+                            value={detail.is_mentoring === '1'}
+                            onValueChange={() =>
+                              toggleCheckbox(
+                                detail.fid_indicator,
+                                'is_mentoring',
+                              )
+                            }
+                          />
+                        </View>
+
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Catatan:</Text>
+                          <TextInput
+                            style={[styles.detailValue, styles.noteInput]}
+                            multiline
+                            placeholder="Masukkan catatan..."
+                            value={detail.note_observasi || ''}
+                            onChangeText={text =>
+                              updateNote(detail.fid_indicator, text)
+                            }
+                          />
+                        </View>
+                      </View>
+                    );
+                  })}
+
+                  {/* NILAI POINT PER KATEGORI */}
+                  <View style={styles.categoryScore}>
+                    <Text style={styles.scoreText}>
+                      Observasi : Y Score:{' '}
+                      {points[kategori]?.yscoreObservasi ?? 0} | Point:{' '}
+                      {points[kategori]?.pointObservasi ?? 0}
+                    </Text>
+                    <Text style={styles.scoreText}>
+                      Mentoring : Y Score:{' '}
+                      {points[kategori]?.yscoreMentoring ?? 0} | Point:{' '}
+                      {points[kategori]?.pointMentoring ?? 0}
+                    </Text>
                   </View>
-                );
-              })}
+                </>
+              )}
             </View>
           ))}
         </ToggleCard>
@@ -947,7 +1008,7 @@ const AddDataMentoring = () => {
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.submitButtonText}>Simpan Perubahan</Text>
+            <Text style={styles.submitButtonText}>Simpan Data</Text>
           )}
         </TouchableOpacity>
       </View>

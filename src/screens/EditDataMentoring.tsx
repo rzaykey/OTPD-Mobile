@@ -732,7 +732,7 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
                     </View>
                   </View>
 
-                  <View style={{padding: 16}}>
+                  <View style={{padding: 1}}>
                     <Text style={{fontSize: 16, marginBottom: 8}}>
                       Operator
                     </Text>
@@ -762,12 +762,21 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
                       </View>
                     )}
 
-                    <Text style={{marginTop: 20, fontSize: 16}}>
-                      Operator JDE: {operatorJDE}
-                    </Text>
-                    <Text style={{fontSize: 16}}>
-                      Nama Operator: {operatorName}
-                    </Text>
+                    <View style={styles.operatorBox}>
+                      <Text style={{fontSize: 16, marginBottom: 8}}>
+                        Operator JDE: {operatorJDE}
+                      </Text>
+                      <View
+                        style={{
+                          height: 1,
+                          backgroundColor: '#e0e0e0',
+                          marginVertical: 8,
+                        }}
+                      />
+                      <Text style={{fontSize: 16}}>
+                        Nama Operator: {operatorName}
+                      </Text>
+                    </View>
                   </View>
 
                   <Text style={styles.label}>Site</Text>
@@ -1001,8 +1010,14 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
                       {/* Skor per kategori */}
                       <View style={styles.categoryScore}>
                         <Text style={styles.scoreText}>
-                          Y Score: {points[kategori]?.yscore ?? 0} | Point:{' '}
-                          {points[kategori]?.point ?? 0}
+                          Observasi : Y Score:{' '}
+                          {points[kategori]?.yscoreObservasi ?? 0} | Point:{' '}
+                          {points[kategori]?.pointObservasi ?? 0}
+                        </Text>
+                        <Text style={styles.scoreText}>
+                          Mentoring : Y Score:{' '}
+                          {points[kategori]?.yscoreMentoring ?? 0} | Point:{' '}
+                          {points[kategori]?.pointMentoring ?? 0}
                         </Text>
                       </View>
                     </>

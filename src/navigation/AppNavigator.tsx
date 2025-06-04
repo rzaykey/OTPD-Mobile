@@ -7,10 +7,6 @@ import FullDashboard from '../screens/FullDashboard';
 import AdminDashboard from '../screens/AdminDashboard';
 import TrainerDashboard from '../screens/TrainerDashboard';
 import Data from '../screens/Data';
-import FormDigger from '../screens/FormDigger';
-import FormHauler from '../screens/FormHauler';
-import FormBuldozer from '../screens/FormBuldozer';
-import FormGrader from '../screens/FormGrader';
 import DailyActivity from '../screens/DailyActivity';
 import TrainHours from '../screens/TrainHours';
 import EditDataMentoring from '../screens/EditDataMentoring';
@@ -42,10 +38,6 @@ const AppNavigator = () => (
       component={AddDataMentoring}
       options={{title: 'Add Data Mentoring'}}
     />
-    <Stack.Screen name="FormDigger" component={FormDigger} />
-    <Stack.Screen name="FormHauler" component={FormHauler} />
-    <Stack.Screen name="FormBuldozer" component={FormBuldozer} />
-    <Stack.Screen name="FormGrader" component={FormGrader} />
     <Stack.Screen name="DailyActivity" component={DailyActivity} />
     <Stack.Screen name="TrainHours" component={TrainHours} />
   </Stack.Navigator>
