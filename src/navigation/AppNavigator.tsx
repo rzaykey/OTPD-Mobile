@@ -6,10 +6,10 @@ import LoginScreen from '../screens/LoginScreen';
 import FullDashboard from '../screens/FullDashboard';
 import AdminDashboard from '../screens/AdminDashboard';
 import TrainerDashboard from '../screens/TrainerDashboard';
-import Data from '../screens/Data';
-import TrainHours from '../screens/TrainHours';
-import EditDataMentoring from '../screens/EditDataMentoring';
-import AddDataMentoring from '../screens/AddDataMentoring';
+import Data from '../screens/mentoring/Data';
+import TrainHours from '../screens/trainhours/TrainHours';
+import EditDataMentoring from '../screens/mentoring/EditDataMentoring';
+import AddDataMentoring from '../screens/mentoring/AddDataMentoring';
 import DailyActivity from '../screens/daily/Daily';
 import AddDailyActivity from '../screens/daily/AddDailyActivity';
 

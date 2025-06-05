@@ -7,6 +7,8 @@ import {
   View,
   Platform,
   TouchableOpacity,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
 import RNPickerSelect from 'react-native-picker-select';
 import axios from 'axios';
@@ -15,6 +17,29 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import DropDownPicker from 'react-native-dropdown-picker';
 import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
 import DateTimePicker from '@react-native-community/datetimepicker';
+
+if (Platform.OS === 'android') {
+  UIManager.setLayoutAnimationEnabledExperimental &&
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+const CollapsibleCard = ({title, children}) => {
+  const [expanded, setExpanded] = useState(true);
+
+  const toggleExpand = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpanded(!expanded);
+  };
+
+  return (
+    <View style={addDailyAct.card}>
+      <TouchableOpacity onPress={toggleExpand} style={addDailyAct.cardHeader}>
+        <Text style={addDailyAct.cardTitle}>{title}</Text>
+      </TouchableOpacity>
+      {expanded && <View style={addDailyAct.cardBody}>{children}</View>}
+    </View>
+  );
+};
 
 const AddDailyActivity = () => {
   const [formData, setFormData] = useState({
@@ -29,7 +54,6 @@ const AddDailyActivity = () => {
     total_hour: '',
   });
   const [role, setRole] = useState('');
-
   const [kpiOptions, setKpiOptions] = useState([]);
   const [activityOptions, setActivityOptions] = useState([]);
   const [unitOptions, setUnitOptions] = useState([]);
@@ -70,7 +94,6 @@ const AddDailyActivity = () => {
           site: site,
         }));
 
-        // Fetch KPI
         const kpiResp = await axios.get('http://10.0.2.2:8000/api/getKPI', {
           headers: {Authorization: `Bearer ${token}`},
           params: {role},
@@ -105,7 +128,6 @@ const AddDailyActivity = () => {
           setActivityOptions(actData);
         }
 
-        // Fetch unit & employee
         const dayActResp = await axios.get(
           'http://10.0.2.2:8000/api/dayActivities/createDailyAct',
           {
@@ -179,9 +201,6 @@ const AddDailyActivity = () => {
   };
 
   const handleSubmit = async () => {
-    console.log('Submit:', formData);
-
-    // Validasi sederhana sebelum kirim
     const requiredFields = [
       'jde_no',
       'employee_name',
@@ -225,7 +244,6 @@ const AddDailyActivity = () => {
           'Sukses',
           response.data.message || 'Data berhasil disimpan',
         );
-        // Reset form jika diperlukan
         setFormData(prev => ({
           ...prev,
           date_activity: '',
@@ -240,7 +258,6 @@ const AddDailyActivity = () => {
         Alert.alert('Gagal', response.data.message || 'Gagal menyimpan data');
       }
     } catch (error) {
-      console.error('Submit error:', error);
       if (error.response?.data?.errors) {
         const messages = Object.values(error.response.data.errors)
           .flat()
@@ -258,108 +275,118 @@ const AddDailyActivity = () => {
         contentContainerStyle={addDailyAct.container}
         keyboardShouldPersistTaps="handled"
         extraScrollHeight={120}>
-        <Text style={addDailyAct.label}>JDE No</Text>
-        <TextInput
-          style={addDailyAct.input}
-          value={formData.jde_no}
-          editable={false}
-        />
+        <Text style={addDailyAct.header}>INPUT DAILY ACTIVITY</Text>
 
-        <Text style={addDailyAct.label}>Employee Name</Text>
-        <TextInput
-          style={addDailyAct.input}
-          value={formData.employee_name}
-          editable={false}
-        />
-
-        <Text style={addDailyAct.label}>Site</Text>
-        <TextInput
-          style={addDailyAct.input}
-          value={formData.site}
-          editable={false}
-        />
-
-        <Text style={addDailyAct.label}>Date Activity</Text>
-        <TouchableOpacity onPress={() => setShowDatePicker(true)}>
+        <CollapsibleCard title="User Info">
+          <Text style={addDailyAct.label}>JDE No</Text>
           <TextInput
             style={addDailyAct.input}
-            value={formData.date_activity}
-            placeholder="YYYY-MM-DD"
+            value={formData.jde_no}
             editable={false}
           />
-        </TouchableOpacity>
-        {showDatePicker && (
-          <DateTimePicker
-            value={selectedDate}
-            mode="date"
-            display="default"
-            onChange={handleDateChange}
-            maximumDate={new Date()}
+
+          <Text style={addDailyAct.label}>Employee Name</Text>
+          <TextInput
+            style={addDailyAct.input}
+            value={formData.employee_name}
+            editable={false}
           />
-        )}
 
-        <Text style={addDailyAct.label}>KPI Type</Text>
-        <RNPickerSelect
-          onValueChange={onKpiChange}
-          value={formData.kpi_type}
-          placeholder={{label: 'Pilih KPI', value: ''}}
-          items={kpiOptions}
-          style={{
-            inputIOS: addDailyAct.pickerSelectIOS,
-            inputAndroid: addDailyAct.pickerSelectAndroid,
-          }}
-        />
+          <Text style={addDailyAct.label}>Site</Text>
+          <TextInput
+            style={addDailyAct.input}
+            value={formData.site}
+            editable={false}
+          />
+        </CollapsibleCard>
 
-        <Text style={addDailyAct.label}>Activity</Text>
-        <RNPickerSelect
-          onValueChange={val => handleChange('activity', val)}
-          value={formData.activity}
-          placeholder={{label: 'Pilih Activity', value: ''}}
-          items={activityOptions}
-          style={{
-            inputIOS: addDailyAct.pickerSelectIOS,
-            inputAndroid: addDailyAct.pickerSelectAndroid,
-          }}
-        />
+        <CollapsibleCard title="Activity Info">
+          <Text style={addDailyAct.label}>Date Activity</Text>
+          <TouchableOpacity onPress={() => setShowDatePicker(true)}>
+            <TextInput
+              style={addDailyAct.input}
+              value={formData.date_activity}
+              placeholder="YYYY-MM-DD"
+              editable={false}
+            />
+          </TouchableOpacity>
+          {showDatePicker && (
+            <DateTimePicker
+              value={selectedDate}
+              mode="date"
+              display="default"
+              onChange={handleDateChange}
+              maximumDate={new Date()}
+            />
+          )}
 
-        <Text style={addDailyAct.label}>Detail Unit</Text>
-        <DropDownPicker
-          open={unitOpen}
-          value={unitValue}
-          items={unitOptions}
-          setOpen={setUnitOpen}
-          setValue={setUnitValue}
-          onChangeValue={val => {
-            setUnitValue(val);
-            const selected = unitOptions.find(item => item.value === val);
-            handleChange('unit_detail', selected?.modelOnly || '');
-          }}
-          setItems={setUnitOptions}
-          placeholder="Pilih Unit"
-          searchable
-          listMode="MODAL"
-          modalTitle="Pilih Unit"
-          modalProps={{animationType: 'slide'}}
-          dropDownDirection="AUTO"
-          zIndex={3000}
-          zIndexInverse={1000}
-        />
+          <Text style={addDailyAct.label}>KPI Type</Text>
+          <RNPickerSelect
+            onValueChange={onKpiChange}
+            value={formData.kpi_type}
+            placeholder={{label: 'Pilih KPI', value: ''}}
+            items={kpiOptions}
+            style={{
+              inputIOS: addDailyAct.pickerSelectIOS,
+              inputAndroid: addDailyAct.pickerSelectAndroid,
+            }}
+          />
 
-        <Text style={addDailyAct.label}>Total Participant</Text>
-        <TextInput
-          style={addDailyAct.input}
-          keyboardType="numeric"
-          value={formData.total_participant}
-          onChangeText={text => handleChange('total_participant', text)}
-        />
+          <Text style={addDailyAct.label}>Activity</Text>
+          <RNPickerSelect
+            onValueChange={val => handleChange('activity', val)}
+            value={formData.activity}
+            placeholder={{label: 'Pilih Activity', value: ''}}
+            items={activityOptions}
+            style={{
+              inputIOS: addDailyAct.pickerSelectIOS,
+              inputAndroid: addDailyAct.pickerSelectAndroid,
+            }}
+          />
+        </CollapsibleCard>
 
-        <Text style={addDailyAct.label}>Total Hour</Text>
-        <TextInput
-          style={addDailyAct.input}
-          keyboardType="numeric"
-          value={formData.total_hour}
-          onChangeText={text => handleChange('total_hour', text)}
-        />
+        <CollapsibleCard title="Unit Info">
+          <Text style={addDailyAct.label}>Detail Unit</Text>
+          <DropDownPicker
+            open={unitOpen}
+            value={unitValue}
+            items={unitOptions}
+            setOpen={setUnitOpen}
+            setValue={setUnitValue}
+            onChangeValue={val => {
+              setUnitValue(val);
+              const selected = unitOptions.find(item => item.value === val);
+              handleChange('unit_detail', selected?.modelOnly || '');
+            }}
+            setItems={setUnitOptions}
+            placeholder="Pilih Unit"
+            searchable
+            listMode="MODAL"
+            modalTitle="Pilih Unit"
+            modalProps={{animationType: 'slide'}}
+            dropDownDirection="AUTO"
+            zIndex={3000}
+            zIndexInverse={1000}
+          />
+        </CollapsibleCard>
+
+        <CollapsibleCard title="Participant Info">
+          <Text style={addDailyAct.label}>Total Participant</Text>
+          <TextInput
+            style={addDailyAct.input}
+            keyboardType="numeric"
+            value={formData.total_participant}
+            onChangeText={text => handleChange('total_participant', text)}
+          />
+
+          <Text style={addDailyAct.label}>Total Hour</Text>
+          <TextInput
+            style={addDailyAct.input}
+            keyboardType="numeric"
+            value={formData.total_hour}
+            onChangeText={text => handleChange('total_hour', text)}
+          />
+        </CollapsibleCard>
 
         <Button title="Simpan" onPress={handleSubmit} />
       </KeyboardAwareScrollView>

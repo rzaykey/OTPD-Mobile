@@ -12,12 +12,12 @@ import {
   Alert,
 } from 'react-native';
 import {Picker} from '@react-native-picker/picker';
-import {tabelStyles as styles} from '../styles/tabelStyles';
+import {tabelStyles as styles} from '../../styles/tabelStyles';
 import {useNavigation, useFocusEffect} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
-import {RootStackParamList} from '../navigation/types';
+import {RootStackParamList} from '../../navigation/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {MentoringData} from '../navigation/types';
+import {MentoringData} from '../../navigation/types';
 
 const pageSizeOptions = [5, 10, 50, 100];
 

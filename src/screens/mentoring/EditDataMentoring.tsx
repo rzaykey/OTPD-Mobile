@@ -18,8 +18,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import Icon from 'react-native-vector-icons/Ionicons';
 import CheckBox from '@react-native-community/checkbox';
 
-import {editDataStyles as styles} from '../styles/editDataStyles';
-import {pickerSelectStyles} from '../styles/pickerSelectStyles';
+import {editDataStyles as styles} from '../../styles/editDataStyles';
+import {pickerSelectStyles} from '../../styles/pickerSelectStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useNavigation} from '@react-navigation/native';
 
