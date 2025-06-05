@@ -16,6 +16,11 @@ import {dashboardStyles as styles} from '../styles/dashboardStyles';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'FullDashboard'>;
 
+type SubmenuItem = {
+  label: string;
+  screen: keyof RootStackParamList;
+};
+
 const categories = [
   {
     id: '1',
@@ -29,12 +34,28 @@ const categories = [
   },
 ];
 
+// Submenu data terpisah
+const mentoringSubmenuItems: SubmenuItem[] = [
+  {label: 'Form Digger', screen: 'AddDataMentoring'},
+  {label: 'Form Hauler', screen: 'AddDataMentoring'},
+  {label: 'Form Bulldozer', screen: 'AddDataMentoring'},
+  {label: 'Form Grader', screen: 'AddDataMentoring'},
+];
+
+const dailySubmenuItems: SubmenuItem[] = [
+  {label: 'Index Daily', screen: 'DailyActivity'},
+  {label: 'Tambah Daily', screen: 'AddDailyActivity'},
+];
+
 const FullDashboard = ({navigation}: Props) => {
   const [user, setUser] = useState<any>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
     null,
   );
-  const [showMentoringForms, setShowMentoringForms] = useState(false);
+  // Hanya satu submenu aktif sekaligus: 'mentoring' | 'daily' | null
+  const [activeSubmenu, setActiveSubmenu] = useState<
+    'mentoring' | 'daily' | null
+  >(null);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -53,6 +74,8 @@ const FullDashboard = ({navigation}: Props) => {
 
   const handleCategoryPress = (categoryId: string) => {
     setSelectedCategoryId(prev => (prev === categoryId ? null : categoryId));
+    // Reset submenu ketika ganti kategori
+    setActiveSubmenu(null);
   };
 
   const selectedCategory = categories.find(
@@ -61,18 +84,45 @@ const FullDashboard = ({navigation}: Props) => {
 
   const handleItemPress = (item: string) => {
     if (item === 'Tambah Mentoring') {
-      setShowMentoringForms(prev => !prev);
-    } else if (item.startsWith('Form')) {
-      // Ambil unitType dari nama tombol (misalnya: "Form Grader" -> "grader")
-      const unitType = item.replace('Form ', '').toUpperCase();
-      navigation.navigate('AddDataMentoring', {
-        data: {unitType},
-      });
+      setActiveSubmenu(prev => (prev === 'mentoring' ? null : 'mentoring'));
+    } else if (item === 'Daily Activity') {
+      setActiveSubmenu(prev => (prev === 'daily' ? null : 'daily'));
     } else {
+      setActiveSubmenu(null);
+      // Mapping screen name secara dinamis
       const screenName = item.replace(/\s+/g, '') as keyof RootStackParamList;
       navigation.navigate(screenName);
     }
   };
+
+  // Render submenu items secara reusable dengan callback onPressItem opsional
+  const renderSubmenu = (
+    items: SubmenuItem[],
+    onPressItem?: (item: SubmenuItem) => void,
+  ) => (
+    <Animatable.View
+      animation="fadeInUp"
+      duration={400}
+      style={{overflow: 'hidden'}}>
+      <FlatList
+        data={items}
+        keyExtractor={item => item.label}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.itemList}
+        renderItem={({item}) => (
+          <TouchableOpacity
+            onPress={() => {
+              if (onPressItem) onPressItem(item);
+              else navigation.navigate(item.screen);
+            }}
+            style={styles.itemCard}>
+            <Text style={styles.itemText}>{item.label}</Text>
+          </TouchableOpacity>
+        )}
+      />
+    </Animatable.View>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -162,34 +212,16 @@ const FullDashboard = ({navigation}: Props) => {
             />
           </Animatable.View>
         )}
-        {selectedCategory?.title === 'Mentoring' && (
-          <Animatable.View
-            animation={showMentoringForms ? 'fadeInUp' : 'fadeOutDown'}
-            duration={400}
-            style={{overflow: 'hidden'}}>
-            {showMentoringForms && (
-              <FlatList
-                data={[
-                  'Form Digger',
-                  'Form Hauler',
-                  'Form Bulldozer',
-                  'Form Grader',
-                ]}
-                keyExtractor={(item, index) => `${item}-${index}`}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.itemList}
-                renderItem={({item}) => (
-                  <TouchableOpacity
-                    onPress={() => handleItemPress(item)}
-                    style={styles.itemCard}>
-                    <Text style={styles.itemText}>{item}</Text>
-                  </TouchableOpacity>
-                )}
-              />
-            )}
-          </Animatable.View>
-        )}
+
+        {/* Mentoring submenu dengan param unitType */}
+        {activeSubmenu === 'mentoring' &&
+          renderSubmenu(mentoringSubmenuItems, item => {
+            const unitType = item.label.replace('Form ', '').toUpperCase();
+            navigation.navigate('AddDataMentoring', {data: {unitType}});
+          })}
+
+        {/* Daily submenu */}
+        {activeSubmenu === 'daily' && renderSubmenu(dailySubmenuItems)}
 
         {/* Logout Button */}
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>

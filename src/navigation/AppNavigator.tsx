@@ -7,10 +7,11 @@ import FullDashboard from '../screens/FullDashboard';
 import AdminDashboard from '../screens/AdminDashboard';
 import TrainerDashboard from '../screens/TrainerDashboard';
 import Data from '../screens/Data';
-import DailyActivity from '../screens/DailyActivity';
 import TrainHours from '../screens/TrainHours';
 import EditDataMentoring from '../screens/EditDataMentoring';
 import AddDataMentoring from '../screens/AddDataMentoring';
+import DailyActivity from '../screens/daily/Daily';
+import AddDailyActivity from '../screens/daily/AddDailyActivity';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -39,6 +40,11 @@ const AppNavigator = () => (
       options={{title: 'Add Data Mentoring'}}
     />
     <Stack.Screen name="DailyActivity" component={DailyActivity} />
+    <Stack.Screen
+      name="AddDailyActivity"
+      component={AddDailyActivity}
+      options={{title: 'Add Daily Activity'}}
+    />
     <Stack.Screen name="TrainHours" component={TrainHours} />
   </Stack.Navigator>
 );

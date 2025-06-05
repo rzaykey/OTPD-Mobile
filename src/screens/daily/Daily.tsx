@@ -12,20 +12,19 @@ import {
   Alert,
 } from 'react-native';
 import {Picker} from '@react-native-picker/picker';
-import {tabelStyles as styles} from '../styles/tabelStyles';
+import {tabelStyles as styles} from '../../styles/tabelStyles';
 import {useNavigation, useFocusEffect} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
-import {RootStackParamList} from '../navigation/types';
+import {RootStackParamList} from '../../navigation/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {MentoringData} from '../navigation/types';
-
+import {DailyActivity} from '../../navigation/types';
 const pageSizeOptions = [5, 10, 50, 100];
 
-type NavigationProp = StackNavigationProp<RootStackParamList, 'Data'>;
+type NavigationProp = StackNavigationProp<RootStackParamList, 'Daily'>;
 
-export default function Data() {
+export default function Daily() {
   const navigation = useNavigation<NavigationProp>();
-  const [data, setData] = useState<MentoringData[]>([]);
+  const [data, setData] = useState<DailyActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -36,7 +35,7 @@ export default function Data() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch('http://10.0.2.2:8000/api/mentoring-data');
+      const res = await fetch('http://10.0.2.2:8000/api/dayActivities');
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json.data || [];
       setData(arr);
@@ -67,10 +66,10 @@ export default function Data() {
     setExpandedId(prev => (prev === id ? null : id));
   };
 
-  const handleEdit = (item: MentoringData) => {
+  const handleEdit = (item: DailyActivity) => {
     Alert.alert(
-      'Edit Data',
-      `Apakah Anda ingin mengedit data untuk ${item.trainer_name}?`,
+      'Edit Daily',
+      `Apakah Anda ingin mengedit data untuk ${item.employee_name}?`,
       [
         {text: 'Batal', style: 'cancel'},
         {
@@ -97,7 +96,7 @@ export default function Data() {
             onPress: async () => {
               try {
                 const res = await fetch(
-                  `http://10.0.2.2:8000/api/mentoring/${id}/delete`,
+                  `http://10.0.2.2:8000/api/dailyActivities/${id}`,
                   {
                     method: 'DELETE',
                     headers: {
@@ -133,8 +132,8 @@ export default function Data() {
   const filteredData = data.filter(item => {
     const q = searchQuery.toLowerCase();
     return (
-      item.trainer_name.toLowerCase().includes(q) ||
-      item.operator_name.toLowerCase().includes(q) ||
+      item.employee_name.toLowerCase().includes(q) ||
+      item.jde_no.toLowerCase().includes(q) ||
       item.site.toLowerCase().includes(q)
     );
   });
@@ -151,7 +150,7 @@ export default function Data() {
     }
   }, [searchQuery, pageSize, totalPages, page]);
 
-  const renderItem = ({item, index}: {item: MentoringData; index: number}) => {
+  const renderItem = ({item, index}: {item: DailyActivity; index: number}) => {
     const expanded = item.id === expandedId;
     const globalIndex = (page - 1) * pageSize + index + 1;
     return (
@@ -160,30 +159,28 @@ export default function Data() {
           onPress={() => toggleExpand(item.id)}
           style={[styles.row, index % 2 === 0 ? styles.evenRow : null]}>
           <Text style={[styles.cellNo, styles.cellText]}>{globalIndex}</Text>
+          <Text style={[styles.cell, styles.cellText]}>{item.jde_no}</Text>
           <Text style={[styles.cell, styles.cellText]}>
-            {item.trainer_name}
-          </Text>
-          <Text style={[styles.cell, styles.cellText]}>
-            {item.operator_name}
+            {item.employee_name}
           </Text>
           <Text style={[styles.cell, styles.cellText]}>{item.site}</Text>
+          <Text style={(styles.cell, styles.cellText)}>
+            {item.date_activity.split(' ')[0]}
+          </Text>
         </TouchableOpacity>
         {expanded && (
           <View style={styles.expandedArea}>
             <Text style={styles.expandedText}>
-              Area: {item.area} | Unit: {item.unit_number}
+              Jenis KPI: {item.kpi_type} - {item.activity_name}
             </Text>
             <Text style={styles.expandedText}>
-              Date: {item.date_mentoring.split(' ')[0]}
+              Unit Detail: {item.unit_model}
             </Text>
             <Text style={styles.expandedText}>
-              Hour: {item.start_time} - {item.end_time}
+              Jumlah Peserta: {item.total_participant}
             </Text>
             <Text style={styles.expandedText}>
-              Point Observasi: {item.average_point_observation}
-            </Text>
-            <Text style={styles.expandedText}>
-              Point Mentoring: {item.average_point_mentoring}
+              Total Hours: {item.total_hour}
             </Text>
 
             <View style={styles.actionButtonContainer}>
@@ -214,7 +211,7 @@ export default function Data() {
 
   return (
     <SafeAreaView style={{flex: 1, paddingHorizontal: 8, paddingTop: 20}}>
-      <Text style={styles.pageTitle}>Data Mentoring</Text>
+      <Text style={styles.pageTitle}>Daily Mentoring</Text>
 
       <TextInput
         placeholder="Cari Trainer, Operator, atau Site..."
@@ -254,9 +251,10 @@ export default function Data() {
         <View style={{minWidth: 460}}>
           <View style={[styles.row, styles.headerRow]}>
             <Text style={[styles.cellNo, styles.headerCell]}>No</Text>
-            <Text style={[styles.cell, styles.headerCell]}>Trainer</Text>
-            <Text style={[styles.cell, styles.headerCell]}>Operator</Text>
+            <Text style={[styles.cell, styles.headerCell]}>JDE</Text>
+            <Text style={[styles.cell, styles.headerCell]}>Nama</Text>
             <Text style={[styles.cell, styles.headerCell]}>Site</Text>
+            <Text style={[styles.cell, styles.headerCell]}>Date</Text>
           </View>
           <FlatList
             data={paginatedData}

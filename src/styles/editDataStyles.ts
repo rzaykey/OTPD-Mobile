@@ -254,4 +254,10 @@ export const editDataStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e0e0e0',
   },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    padding: 10,
+    borderRadius: 8,
+  },
 });

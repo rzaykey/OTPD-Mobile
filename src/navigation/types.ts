@@ -12,6 +12,23 @@ export interface MentoringData {
   average_point_observation: string;
   average_point_mentoring: string;
 }
+export interface DailyActivity {
+  id: number;
+  jde_no: string;
+  employee_name: string;
+  site: string;
+  date_activity: string; // format: "YYYY-MM-DD HH:mm:ss"
+  kpi_type: string;
+  activity_name: string;
+  activity: string;
+  unit_model: string;
+  total_participant: number;
+  total_hour: number;
+  created_at: string | null;
+  created_by: string | null;
+  updated_at: string | null;
+  updated_by: string | null;
+}
 
 export type RootStackParamList = {
   AuthLoading: undefined;
@@ -19,12 +36,17 @@ export type RootStackParamList = {
   FullDashboard: undefined;
   AdminDashboard: undefined;
   TrainerDashboard: undefined;
+  //Data Mentoring
   Data: undefined;
   EditDataMentoring: {data: any};
   FormDigger: {unitType: string};
   FormHauler: {unitType: string};
   FormBuldozer: {unitType: string};
   FormGrader: {unitType: string};
-  TrainHours: undefined;
+  //Daily
   DailyActivity: undefined;
+  AddDailyActivity: undefined;
+  EditDailyActivity: {data: any};
+  //TrainHours
+  TrainHours: undefined;
 };
