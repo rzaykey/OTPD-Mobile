@@ -75,7 +75,7 @@ export default function Daily() {
         {
           text: 'Edit',
           onPress: () => {
-            navigation.navigate('EditDataMentoring', {id: item.id});
+            navigation.navigate('EditDailyActivity', {id: item.id});
           },
         },
       ],
@@ -96,7 +96,7 @@ export default function Daily() {
             onPress: async () => {
               try {
                 const res = await fetch(
-                  `http://10.0.2.2:8000/api/dailyActivities/${id}`,
+                  `http://10.0.2.2:8000/api/dayActivities/${id}/delete`,
                   {
                     method: 'DELETE',
                     headers: {

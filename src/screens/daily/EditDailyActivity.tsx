@@ -42,15 +42,17 @@ const CollapsibleCard = ({title, children}) => {
   );
 };
 
-const AddDailyActivity = () => {
+const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
+  const {id} = route.params;
   const navigation = useNavigation();
+
   const [formData, setFormData] = useState({
     jde_no: '',
     employee_name: '',
     site: '',
     date_activity: '',
     kpi_type: '',
-    activity: '',
+    activity: '', // akan menyimpan ID activity (bukan nama)
     unit_detail: '',
     total_participant: '',
     total_hour: '',
@@ -63,6 +65,8 @@ const AddDailyActivity = () => {
   const [unitValue, setUnitValue] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [headerData, setHeaderData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
   const getSession = async () => {
     const token = await AsyncStorage.getItem('userToken');
@@ -72,6 +76,54 @@ const AddDailyActivity = () => {
     const site = user?.site || '';
     return {token, role, site};
   };
+
+  useEffect(() => {
+    console.log('Running fetchData useEffect');
+    setLoading(true);
+
+    const fetchData = async () => {
+      try {
+        const res = await axios.get(
+          `http://10.0.2.2:8000/api/dayActivities/${id}/edit`,
+        );
+
+        const rawData = res.data?.data;
+
+        console.log('Data :', rawData);
+        if (!rawData) {
+          alert('Data tidak ditemukan');
+          return;
+        }
+
+        setHeaderData(rawData);
+
+        setFormData(prev => ({
+          ...prev,
+          jde_no: rawData.jde_no || '',
+          employee_name: rawData.employee_name || '',
+          site: rawData.site || '',
+          date_activity: rawData.date_activity || '',
+          kpi_type: rawData.kpi_type || '',
+          activity: rawData.activity || '', // disini ambil ID activity
+          unit_detail: rawData.unit_detail || '',
+          total_participant: String(rawData.total_participant || ''),
+          total_hour: String(rawData.total_hour || ''),
+        }));
+
+        setUnitValue(rawData.unit_detail || '');
+        if (rawData.date_activity) {
+          setSelectedDate(new Date(rawData.date_activity));
+        }
+      } catch (error) {
+        console.error('Fetch data error:', error);
+        alert('Gagal mengambil data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [id]);
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -96,6 +148,7 @@ const AddDailyActivity = () => {
           site: site,
         }));
 
+        // Fetch KPI options
         const kpiResp = await axios.get('http://10.0.2.2:8000/api/getKPI', {
           headers: {Authorization: `Bearer ${token}`},
           params: {role},
@@ -108,9 +161,11 @@ const AddDailyActivity = () => {
         setKpiOptions(kpiData);
 
         if (kpiData.length > 0) {
-          const selectedKpi = kpiData[0].value;
+          const selectedKpi = formData.kpi_type || kpiData[0]?.value;
+
           setFormData(prev => ({...prev, kpi_type: selectedKpi}));
 
+          // Fetch activity based on selected KPI
           const activityResp = await axios.get(
             'http://10.0.2.2:8000/api/getActivity',
             {
@@ -124,38 +179,10 @@ const AddDailyActivity = () => {
           );
 
           const actData = activityResp.data.map(act => ({
-            label: act.activity,
-            value: act.activity,
+            label: act.activity, // nama activity
+            value: act.id, // id activity
           }));
           setActivityOptions(actData);
-        }
-
-        const dayActResp = await axios.get(
-          'http://10.0.2.2:8000/api/dayActivities/createDailyAct',
-          {
-            headers: {Authorization: `Bearer ${token}`},
-          },
-        );
-
-        if (dayActResp.data.success) {
-          const unitData = dayActResp.data.data.unit.map((item, index) => ({
-            label: item.model,
-            value: `${item.id}_${index}`,
-            modelOnly: item.id,
-          }));
-          setUnitOptions(unitData);
-
-          const emp = dayActResp.data.data.employee;
-          setFormData(prev => ({
-            ...prev,
-            jde_no: emp.EmployeeId || prev.jde_no,
-            employee_name: emp.EmployeeName || prev.employee_name,
-          }));
-        } else {
-          Alert.alert(
-            'Error',
-            dayActResp.data.message || 'Gagal mengambil data unit & employee',
-          );
         }
       } catch (error) {
         console.error('Error fetch initial data:', error);
@@ -222,6 +249,26 @@ const AddDailyActivity = () => {
       }
     }
 
+    // Validasi activity harus ID angka
+    if (!Number.isInteger(Number(formData.activity))) {
+      Alert.alert('Validasi Gagal', 'Activity ID tidak valid.');
+      return;
+    }
+
+    const payload = {
+      edit_id: Number(id), // pastikan ID juga number
+      edit_jde: formData.jde_no,
+      edit_name: formData.employee_name,
+      edit_site: formData.site,
+      edit_date: formData.date_activity,
+      edit_kpi: formData.kpi_type,
+      edit_activity: Number(formData.activity),
+      edit_unit_detail: Number(formData.unit_detail),
+      edit_jml_peserta: Number(formData.total_participant),
+      edit_total_hour: Number(formData.total_hour),
+    };
+
+    console.log('Payload to be submitted:', payload);
     try {
       const token = await AsyncStorage.getItem('userToken');
       if (!token) {
@@ -229,9 +276,9 @@ const AddDailyActivity = () => {
         return;
       }
 
-      const response = await axios.post(
-        'http://10.0.2.2:8000/api/dayActivities',
-        formData,
+      const response = await axios.put(
+        `http://10.0.2.2:8000/api/dayActivities/${id}/update`,
+        payload,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -241,11 +288,13 @@ const AddDailyActivity = () => {
         },
       );
 
+      console.log('Payload to be submitted:', id);
       if (response.data.success) {
         Alert.alert(
           'Sukses',
           response.data.message || 'Data berhasil disimpan',
         );
+
         setFormData(prev => ({
           ...prev,
           date_activity: '',
@@ -272,13 +321,129 @@ const AddDailyActivity = () => {
     }
   };
 
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      try {
+        const {token, role, site} = await getSession();
+        if (!token || !role || !site) return;
+
+        // Fetch KPI options
+        const kpiResp = await axios.get('http://10.0.2.2:8000/api/getKPI', {
+          headers: {Authorization: `Bearer ${token}`},
+          params: {role},
+        });
+        const kpiData = kpiResp.data.map(kpi => ({
+          label: kpi.kpi,
+          value: kpi.kpi,
+        }));
+        console.log('KPI Options:', kpiData);
+        setKpiOptions(kpiData);
+
+        // Fetch edit data
+        const editResp = await axios.get(
+          `http://10.0.2.2:8000/api/dayActivities/${id}/edit`,
+        );
+        const rawData = editResp.data?.data;
+        console.log('Raw Edit Data:', rawData);
+
+        if (!rawData) {
+          alert('Data tidak ditemukan');
+          return;
+        }
+
+        setHeaderData(rawData);
+
+        const selectedKpi = rawData.kpi_type || kpiData[0]?.value;
+        setFormData(prev => ({
+          ...prev,
+          jde_no: rawData.jde_no || '',
+          employee_name: rawData.employee_name || '',
+          site: rawData.site || '',
+          date_activity: rawData.date_activity || '',
+          kpi_type: selectedKpi,
+          total_participant: String(rawData.total_participant || ''),
+          total_hour: String(rawData.total_hour || ''),
+        }));
+
+        setSelectedDate(new Date(rawData.date_activity));
+
+        // Fetch activity options
+        const activityResp = await axios.get(
+          'http://10.0.2.2:8000/api/getActivity',
+          {
+            headers: {Authorization: `Bearer ${token}`},
+            params: {
+              kpi: selectedKpi,
+              role,
+              site,
+            },
+          },
+        );
+        const actData = activityResp.data.map(act => ({
+          label: act.activity,
+          value: act.id,
+        }));
+        console.log('Activity Options:', actData);
+        setActivityOptions(actData);
+
+        // Set activity value
+        console.log('Set formData.activity to:', rawData.activity);
+        setFormData(prev => ({
+          ...prev,
+          activity: rawData.activity,
+        }));
+
+        setUnitValue(rawData.unit_detail || '');
+        setFormData(prev => ({
+          ...prev,
+          unit_detail: rawData.unit_detail || '',
+        }));
+      } catch (error) {
+        console.error('Error fetch initial data:', error);
+        Alert.alert('Error', 'Terjadi kesalahan saat mengambil data awal');
+      }
+    };
+
+    fetchInitialData();
+  }, [id]);
+
+  useEffect(() => {
+    const fetchUnitOptions = async () => {
+      try {
+        const token = await AsyncStorage.getItem('userToken');
+        const res = await axios.get('http://10.0.2.2:8000/api/getModelUnit', {
+          headers: {Authorization: `Bearer ${token}`},
+        });
+
+        const unitData = res.data.map(u => ({
+          label: u.model,
+          value: String(u.id),
+          modelOnly: u.model,
+        }));
+
+        console.log('Unit data:', unitData); // debug log
+        setUnitOptions(unitData);
+      } catch (err) {
+        console.error('Error fetch unit options:', err);
+      }
+    };
+
+    fetchUnitOptions();
+  }, []);
+
+  // juga pas user pilih activity, cek valuenya
+  const onActivityChange = val => {
+    console.log('Activity selected:', val);
+    handleChange('activity', val);
+  };
+
   return (
     <View style={{flex: 1}}>
       <KeyboardAwareScrollView
         contentContainerStyle={addDailyAct.container}
         keyboardShouldPersistTaps="handled"
         extraScrollHeight={120}>
-        <Text style={addDailyAct.header}>INPUT DAILY ACTIVITY</Text>
+        <Text style={addDailyAct.header}>EDIT DAILY ACTIVITY</Text>
 
         <CollapsibleCard title="User Info">
           <Text style={addDailyAct.label}>JDE No</Text>
@@ -337,7 +502,7 @@ const AddDailyActivity = () => {
 
           <Text style={addDailyAct.label}>Activity</Text>
           <RNPickerSelect
-            onValueChange={val => handleChange('activity', val)}
+            onValueChange={onActivityChange}
             value={formData.activity}
             placeholder={{label: 'Pilih Activity', value: ''}}
             items={activityOptions}
@@ -358,8 +523,7 @@ const AddDailyActivity = () => {
             setValue={setUnitValue}
             onChangeValue={val => {
               setUnitValue(val);
-              const selected = unitOptions.find(item => item.value === val);
-              handleChange('unit_detail', selected?.modelOnly || '');
+              handleChange('unit_detail', val);
             }}
             setItems={setUnitOptions}
             placeholder="Pilih Unit"
@@ -397,4 +561,4 @@ const AddDailyActivity = () => {
   );
 };
 
-export default AddDailyActivity;
+export default EditDailyActivity;
