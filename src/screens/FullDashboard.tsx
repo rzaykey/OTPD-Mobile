@@ -47,6 +47,11 @@ const dailySubmenuItems: SubmenuItem[] = [
   {label: 'Tambah Daily', screen: 'AddDailyActivity'},
 ];
 
+const trainHoursSubmenuItems: SubmenuItem[] = [
+  {label: 'Train Hours', screen: 'TrainHours'},
+  {label: 'Tambah Train Hours', screen: 'AddTrainHours'},
+];
+
 const FullDashboard = ({navigation}: Props) => {
   const [user, setUser] = useState<any>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
@@ -54,7 +59,7 @@ const FullDashboard = ({navigation}: Props) => {
   );
   // Hanya satu submenu aktif sekaligus: 'mentoring' | 'daily' | null
   const [activeSubmenu, setActiveSubmenu] = useState<
-    'mentoring' | 'daily' | null
+    'mentoring' | 'daily' | 'train' | null
   >(null);
 
   useEffect(() => {
@@ -87,6 +92,8 @@ const FullDashboard = ({navigation}: Props) => {
       setActiveSubmenu(prev => (prev === 'mentoring' ? null : 'mentoring'));
     } else if (item === 'Daily Activity') {
       setActiveSubmenu(prev => (prev === 'daily' ? null : 'daily'));
+    } else if (item === 'Train Hours') {
+      setActiveSubmenu(prev => (prev === 'train' ? null : 'train'));
     } else {
       setActiveSubmenu(null);
       // Mapping screen name secara dinamis
@@ -222,6 +229,9 @@ const FullDashboard = ({navigation}: Props) => {
 
         {/* Daily submenu */}
         {activeSubmenu === 'daily' && renderSubmenu(dailySubmenuItems)}
+
+        {/* Train Hours submenu */}
+        {activeSubmenu === 'train' && renderSubmenu(trainHoursSubmenuItems)}
 
         {/* Logout Button */}
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>

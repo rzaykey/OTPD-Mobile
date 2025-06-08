@@ -13,6 +13,8 @@ import AddDataMentoring from '../screens/mentoring/AddDataMentoring';
 import DailyActivity from '../screens/daily/Daily';
 import AddDailyActivity from '../screens/daily/AddDailyActivity';
 import EditDailyActivity from '../screens/daily/EditDailyActivity';
+import AddTrainHours from '../screens/trainhours/AddTrainHours';
+import EditTrainHours from '../screens/trainhours/EditTrainHours';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -52,6 +54,16 @@ const AppNavigator = () => (
       options={{title: 'Edit Daily Activity'}}
     />
     <Stack.Screen name="TrainHours" component={TrainHours} />
+    <Stack.Screen
+      name="AddTrainHours"
+      component={AddTrainHours}
+      options={{title: 'Add Train Hours'}}
+    />
+    <Stack.Screen
+      name="EditTrainHours"
+      component={EditTrainHours}
+      options={{title: 'Edit Train Hours'}}
+    />
   </Stack.Navigator>
 );
 
