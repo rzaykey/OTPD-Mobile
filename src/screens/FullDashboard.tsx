@@ -6,6 +6,8 @@ import {
   View,
   ScrollView,
   FlatList,
+  UIManager,
+  Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
@@ -13,6 +15,11 @@ import {RootStackParamList} from '../navigation/types';
 import Icon from 'react-native-vector-icons/Ionicons';
 import * as Animatable from 'react-native-animatable';
 import {dashboardStyles as styles} from '../styles/dashboardStyles';
+
+if (Platform.OS === 'android') {
+  UIManager.setLayoutAnimationEnabledExperimental &&
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 type Props = NativeStackScreenProps<RootStackParamList, 'FullDashboard'>;
 

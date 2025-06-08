@@ -10,6 +10,7 @@ import {
   TextInput,
   Platform,
   Alert,
+  UIManager,
 } from 'react-native';
 import {Picker} from '@react-native-picker/picker';
 import {tabelStyles as styles} from '../../styles/tabelStyles';
@@ -19,6 +20,11 @@ import {RootStackParamList} from '../../navigation/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {DailyActivity} from '../../navigation/types';
 const pageSizeOptions = [5, 10, 50, 100];
+
+if (Platform.OS === 'android') {
+  UIManager.setLayoutAnimationEnabledExperimental &&
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 type NavigationProp = StackNavigationProp<RootStackParamList, 'Daily'>;
 

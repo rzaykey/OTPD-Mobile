@@ -3,7 +3,6 @@ import {
   View,
   Text,
   ActivityIndicator,
-  Platform,
   TouchableOpacity,
   TextInput,
   FlatList,
@@ -11,6 +10,8 @@ import {
   KeyboardAvoidingView,
   TouchableWithoutFeedback,
   Keyboard,
+  UIManager,
+  Platform,
 } from 'react-native';
 import axios from 'axios';
 import RNPickerSelect from 'react-native-picker-select';
@@ -23,6 +24,10 @@ import {pickerSelectStyles} from '../../styles/pickerSelectStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useNavigation} from '@react-navigation/native';
 
+if (Platform.OS === 'android') {
+  UIManager.setLayoutAnimationEnabledExperimental &&
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 // --- Type definitions ---
 type IndicatorDetail = {
   fid_indicator: string | number;

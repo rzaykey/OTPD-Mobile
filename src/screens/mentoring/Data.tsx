@@ -8,8 +8,9 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
-  Platform,
   Alert,
+  UIManager,
+  Platform,
 } from 'react-native';
 import {Picker} from '@react-native-picker/picker';
 import {tabelStyles as styles} from '../../styles/tabelStyles';
@@ -18,6 +19,11 @@ import {StackNavigationProp} from '@react-navigation/stack';
 import {RootStackParamList} from '../../navigation/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {MentoringData} from '../../navigation/types';
+
+if (Platform.OS === 'android') {
+  UIManager.setLayoutAnimationEnabledExperimental &&
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 const pageSizeOptions = [5, 10, 50, 100];
 

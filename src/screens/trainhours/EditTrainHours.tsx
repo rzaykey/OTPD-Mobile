@@ -5,10 +5,10 @@ import {
   Button,
   Alert,
   View,
-  Platform,
   TouchableOpacity,
   LayoutAnimation,
   UIManager,
+  Platform,
 } from 'react-native';
 import axios from 'axios';
 import {addDailyAct} from '../../styles/addDailyAct';
