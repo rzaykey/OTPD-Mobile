@@ -53,6 +53,52 @@ export interface TrainHours {
   updated_by: string | null;
 }
 
+export interface MopData {
+  id: number;
+  jde_no: string;
+  employee_name: string;
+  equipment_type1: string | null;
+  equipment_type2: string | null;
+  equipment_type3: string | null;
+  equipment_type4: string | null;
+  equipment_type5: string | null;
+  equipment_type6: string | null;
+  input_date: string | null;
+  month: string;
+  year: string;
+  a_attendance_ratio: string;
+  b_discipline: string;
+  c_safety_awareness: string;
+  d_wh_waste_equiptype1: string | null;
+  d_wh_waste_equiptype2: string | null;
+  d_wh_waste_equiptype3: string | null;
+  d_wh_waste_equiptype4: string | null;
+  d_wh_waste_equiptype5: string | null;
+  d_wh_waste_equiptype6: string | null;
+  e_pty_equiptype1: string | null;
+  e_pty_equiptype2: string | null;
+  e_pty_equiptype3: string | null;
+  e_pty_equiptype4: string | null;
+  e_pty_equiptype5: string | null;
+  e_pty_equiptype6: string | null;
+  point_eligibilitas: string;
+  point_produksi: string;
+  total_point: string;
+  mop_bulanan_grade: string;
+  created_by: string | null;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+  site: string;
+  mop_type: string;
+  target_avg_hm: string;
+  point_a: string;
+  point_b: string;
+  point_c: string;
+  point_d: string;
+  point_e: string;
+}
+
 export type RootStackParamList = {
   AuthLoading: undefined;
   Login: undefined;
@@ -74,4 +120,7 @@ export type RootStackParamList = {
   TrainHours: undefined;
   AddTrainHours: undefined;
   EditTrainHours: {data: any};
+  //MOP
+  Mop: undefined;
+  AddMop: undefined;
 };

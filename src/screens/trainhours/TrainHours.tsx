@@ -6,7 +6,6 @@ import {
   View,
   ActivityIndicator,
   TouchableOpacity,
-  ScrollView,
   TextInput,
   Alert,
   UIManager,
@@ -19,6 +18,8 @@ import {StackNavigationProp} from '@react-navigation/stack';
 import {RootStackParamList} from '../../navigation/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {TrainHours} from '../../navigation/types';
+import * as Animatable from 'react-native-animatable';
+import Icon from 'react-native-vector-icons/Ionicons';
 
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
@@ -158,65 +159,9 @@ export default function Data() {
     }
   }, [searchQuery, pageSize, totalPages, page]);
 
-  const renderItem = ({item, index}: {item: TrainHours; index: number}) => {
-    const expanded = item.id === expandedId;
-    const globalIndex = (page - 1) * pageSize + index + 1;
-    return (
-      <>
-        <TouchableOpacity
-          onPress={() => toggleExpand(item.id)}
-          style={[styles.row, index % 2 === 0 ? styles.evenRow : null]}>
-          <Text style={[styles.cellNo, styles.cellText]}>{globalIndex}</Text>
-          <Text style={[styles.cell, styles.cellText]}>{item.jde_no}</Text>
-          <Text style={[styles.cell, styles.cellText]}>
-            {item.employee_name}
-          </Text>
-          <Text style={[styles.cell, styles.cellText]}>{item.position}</Text>
-          <Text style={[styles.cell, styles.cellText]}>
-            {item.date_activity.split(' ')[0]}
-          </Text>
-        </TouchableOpacity>
-        {expanded && (
-          <View style={styles.expandedArea}>
-            <Text style={styles.expandedText}>
-              Training: {item.training_type} | Unit Type: {item.unit_class} |
-              site: {item.site}
-            </Text>
-            <Text style={styles.expandedText}>
-              Type Class: {item.unit_type.split(' ')[0]}
-            </Text>
-            <Text style={styles.expandedText}>
-              HM Start: {item.hm_start} - HM End {item.hm_end}
-            </Text>
-            <Text style={styles.expandedText}>
-              Plan Total HM: {item.plan_total_hm} | Total HM: {item.total_hm}
-            </Text>
-            <Text style={styles.expandedText}>Progres: {item.progres}</Text>
-            <Text style={styles.expandedText}>
-              Persentase Progres:{' '}
-              {item.plan_total_hm > 0
-                ? Math.round((item.progres / item.plan_total_hm) * 100)
-                : 0}
-              %
-            </Text>
-
-            <View style={styles.actionButtonContainer}>
-              <TouchableOpacity
-                style={styles.editButton}
-                onPress={() => handleEdit(item)}>
-                <Text style={styles.actionButtonText}>Edit</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.deleteButton}
-                onPress={() => handleDelete(item.id)}>
-                <Text style={styles.actionButtonText}>Hapus</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-      </>
-    );
-  };
+  useEffect(() => {
+    setExpandedId(null);
+  }, [searchQuery, page, pageSize]);
 
   if (loading && !refreshing) {
     return (
@@ -228,10 +173,10 @@ export default function Data() {
 
   return (
     <SafeAreaView style={{flex: 1, paddingHorizontal: 8, paddingTop: 20}}>
-      <Text style={styles.pageTitle}>Data Mentoring</Text>
+      <Text style={styles.pageTitle}>Train Hours</Text>
 
       <TextInput
-        placeholder="Cari Trainer, Operator, atau Site..."
+        placeholder="Cari Nama, Position, Site..."
         value={searchQuery}
         onChangeText={text => {
           setSearchQuery(text);
@@ -260,35 +205,102 @@ export default function Data() {
         </View>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={true}
-        style={{marginBottom: 20}}
-        contentContainerStyle={{paddingRight: 16}}>
-        <View style={{minWidth: 460}}>
-          <View style={[styles.row, styles.headerRow]}>
-            <Text style={[styles.cellNo, styles.headerCell]}>No</Text>
-            <Text style={[styles.cell, styles.headerCell]}>JDE</Text>
-            <Text style={[styles.cell, styles.headerCell]}>NAMA</Text>
-            <Text style={[styles.cell, styles.headerCell]}>TRAINING TYPE</Text>
-            <Text style={[styles.cell, styles.headerCell]}>DATE ACTIVITY</Text>
-          </View>
-          <FlatList
-            data={paginatedData}
-            keyExtractor={item => item.id.toString()}
-            renderItem={renderItem}
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            showsVerticalScrollIndicator={true}
-          />
-          {filteredData.length === 0 && (
-            <Text
-              style={{textAlign: 'center', marginVertical: 16, color: 'gray'}}>
-              Tidak ada data ditemukan.
-            </Text>
-          )}
-        </View>
-      </ScrollView>
+      <FlatList
+        data={paginatedData}
+        keyExtractor={item => item.id.toString()}
+        renderItem={({item, index}) => {
+          const expanded = item.id === expandedId;
+          return (
+            <Animatable.View
+              animation={expanded ? 'fadeInDown' : 'fadeInUp'}
+              duration={350}
+              style={[styles.cardContainer, expanded && styles.cardExpanded]}>
+              <TouchableOpacity
+                onPress={() => toggleExpand(item.id)}
+                style={{paddingBottom: expanded ? 0 : 8}}
+                activeOpacity={0.88}>
+                <View style={styles.cardHeader}>
+                  <View>
+                    <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                      <Icon
+                        name="person-circle-outline"
+                        size={20}
+                        color="#1E90FF"
+                        style={{marginRight: 5}}
+                      />
+                      <Text style={styles.cardTitle}>{item.employee_name}</Text>
+                    </View>
+                    <Text style={styles.cardSubtitle}>{item.position}</Text>
+                  </View>
+                  <View style={{alignItems: 'flex-end'}}>
+                    <Text style={styles.cardSite}>{item.site}</Text>
+                    <Text style={{fontSize: 12, color: '#888'}}>
+                      {item.date_activity.split(' ')[0]}
+                    </Text>
+                    <Icon
+                      name={
+                        expanded ? 'chevron-up-outline' : 'chevron-down-outline'
+                      }
+                      size={19}
+                      color="#bbb"
+                    />
+                  </View>
+                </View>
+              </TouchableOpacity>
+              {expanded && (
+                <View style={styles.cardDetail}>
+                  <Text style={styles.cardDetailText}>
+                    Training: {item.training_type} | Unit Type:{' '}
+                    {item.unit_class}
+                  </Text>
+                  <Text style={styles.cardDetailText}>
+                    Type Class: {item.unit_type.split(' ')[0]}
+                  </Text>
+                  <Text style={styles.cardDetailText}>
+                    HM Start: {item.hm_start} - HM End {item.hm_end}
+                  </Text>
+                  <Text style={styles.cardDetailText}>
+                    Plan Total HM: {item.plan_total_hm} | Total HM:{' '}
+                    {item.total_hm}
+                  </Text>
+                  <Text style={styles.cardDetailText}>
+                    Progres: {item.progres}
+                  </Text>
+                  <Text style={styles.cardDetailText}>
+                    Persentase Progres:{' '}
+                    {item.plan_total_hm > 0
+                      ? Math.round((item.progres / item.plan_total_hm) * 100)
+                      : 0}
+                    %
+                  </Text>
+                  <View style={styles.cardActionRow}>
+                    <TouchableOpacity
+                      style={styles.editButton}
+                      onPress={() => handleEdit(item)}>
+                      <Text style={styles.actionButtonText}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.deleteButton}
+                      onPress={() => handleDelete(item.id)}>
+                      <Text style={styles.actionButtonText}>Hapus</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </Animatable.View>
+          );
+        }}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        showsVerticalScrollIndicator={true}
+        ListEmptyComponent={
+          <Text
+            style={{textAlign: 'center', marginVertical: 16, color: 'gray'}}>
+            Tidak ada data ditemukan.
+          </Text>
+        }
+        contentContainerStyle={{paddingBottom: 22}}
+      />
 
       <View style={styles.paginationContainer}>
         <TouchableOpacity
@@ -297,11 +309,9 @@ export default function Data() {
           style={[styles.pageButton, page === 1 && styles.pageButtonDisabled]}>
           <Text style={styles.pageButtonText}>Prev</Text>
         </TouchableOpacity>
-
         <Text style={styles.pageInfo}>
           Page {page} / {totalPages || 1}
         </Text>
-
         <TouchableOpacity
           onPress={() => setPage(p => Math.min(totalPages, p + 1))}
           disabled={page === totalPages || totalPages === 0}

@@ -15,6 +15,8 @@ import AddDailyActivity from '../screens/daily/AddDailyActivity';
 import EditDailyActivity from '../screens/daily/EditDailyActivity';
 import AddTrainHours from '../screens/trainhours/AddTrainHours';
 import EditTrainHours from '../screens/trainhours/EditTrainHours';
+import Mop from '../screens/mop/Mop';
+import AddMop from '../screens/mop/AddMop';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -63,6 +65,16 @@ const AppNavigator = () => (
       name="EditTrainHours"
       component={EditTrainHours}
       options={{title: 'Edit Train Hours'}}
+    />
+    <Stack.Screen
+      name="Mop"
+      component={Mop}
+      options={{title: 'Data Mine Operator Performance '}}
+    />
+    <Stack.Screen
+      name="AddMop"
+      component={AddMop}
+      options={{title: 'Add MOP'}}
     />
   </Stack.Navigator>
 );

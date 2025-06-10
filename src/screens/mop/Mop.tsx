@@ -7,9 +7,9 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   TextInput,
+  Platform,
   Alert,
   UIManager,
-  Platform,
 } from 'react-native';
 import {Picker} from '@react-native-picker/picker';
 import {tabelStyles as styles} from '../../styles/tabelStyles';
@@ -17,22 +17,22 @@ import {useNavigation, useFocusEffect} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
 import {RootStackParamList} from '../../navigation/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {MentoringData} from '../../navigation/types';
+import {MopData} from '../../navigation/types';
 import * as Animatable from 'react-native-animatable';
 import Icon from 'react-native-vector-icons/Ionicons';
+
+const pageSizeOptions = [5, 10, 50, 100];
 
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const pageSizeOptions = [5, 10, 50, 100];
+type NavigationProp = StackNavigationProp<RootStackParamList, 'Mop'>;
 
-type NavigationProp = StackNavigationProp<RootStackParamList, 'Data'>;
-
-export default function Data() {
+export default function Mop() {
   const navigation = useNavigation<NavigationProp>();
-  const [data, setData] = useState<MentoringData[]>([]);
+  const [data, setData] = useState<MopData[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -43,7 +43,7 @@ export default function Data() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch('http://10.0.2.2:8000/api/mentoring-data');
+      const res = await fetch('http://10.0.2.2:8000/api/mopData');
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json.data || [];
       setData(arr);
@@ -74,74 +74,11 @@ export default function Data() {
     setExpandedId(prev => (prev === id ? null : id));
   };
 
-  const handleEdit = (item: MentoringData) => {
-    Alert.alert(
-      'Edit Data',
-      `Apakah Anda ingin mengedit data untuk ${item.trainer_name}?`,
-      [
-        {text: 'Batal', style: 'cancel'},
-        {
-          text: 'Edit',
-          onPress: () => {
-            navigation.navigate('EditDataMentoring', {id: item.id});
-          },
-        },
-      ],
-    );
-  };
-
-  const handleDelete = useCallback(
-    async (id: number) => {
-      try {
-        const token = await AsyncStorage.getItem('userToken');
-        if (!token) return Alert.alert('Sesi Habis', 'Silakan login kembali.');
-
-        Alert.alert('Konfirmasi Hapus', 'Yakin ingin menghapus data ini?', [
-          {text: 'Batal', style: 'cancel'},
-          {
-            text: 'Hapus',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                const res = await fetch(
-                  `http://10.0.2.2:8000/api/mentoring/${id}/delete`,
-                  {
-                    method: 'DELETE',
-                    headers: {
-                      Authorization: `Bearer ${token}`,
-                      'Content-Type': 'application/json',
-                      Accept: 'application/json',
-                    },
-                  },
-                );
-                const text = await res.text();
-                const json = JSON.parse(text);
-                if (json.success) {
-                  Alert.alert('Sukses', json.message);
-                  fetchData();
-                } else {
-                  Alert.alert('Gagal', json.message || 'Gagal menghapus data.');
-                }
-              } catch (err) {
-                console.error('Delete error:', err);
-                Alert.alert('Error', 'Terjadi kesalahan saat menghapus.');
-              }
-            },
-          },
-        ]);
-      } catch (err) {
-        console.error(err);
-        Alert.alert('Error', 'Terjadi kesalahan.');
-      }
-    },
-    [fetchData],
-  );
-
   const filteredData = data.filter(item => {
     const q = searchQuery.toLowerCase();
     return (
-      item.trainer_name.toLowerCase().includes(q) ||
-      item.operator_name.toLowerCase().includes(q) ||
+      item.employee_name.toLowerCase().includes(q) ||
+      item.jde_no.toLowerCase().includes(q) ||
       item.site.toLowerCase().includes(q)
     );
   });
@@ -158,7 +95,7 @@ export default function Data() {
     }
   }, [searchQuery, pageSize, totalPages, page]);
 
-  // RESET expandedId saat filter/page berubah (agar tidak salah expand)
+  // Agar collapse reset saat filter/page berubah
   useEffect(() => {
     setExpandedId(null);
   }, [searchQuery, page, pageSize]);
@@ -173,10 +110,10 @@ export default function Data() {
 
   return (
     <SafeAreaView style={{flex: 1, paddingHorizontal: 8, paddingTop: 20}}>
-      <Text style={styles.pageTitle}>Data Mentoring</Text>
+      <Text style={styles.pageTitle}>Mine Operator Performance</Text>
 
       <TextInput
-        placeholder="Cari Trainer, Operator, atau Site..."
+        placeholder="Cari Nama, JDE, atau Site..."
         value={searchQuery}
         onChangeText={text => {
           setSearchQuery(text);
@@ -208,13 +145,18 @@ export default function Data() {
       <FlatList
         data={paginatedData}
         keyExtractor={item => item.id.toString()}
-        renderItem={({item}) => {
+        renderItem={({item, index}) => {
           const expanded = item.id === expandedId;
+          const globalIndex = (page - 1) * pageSize + index + 1;
           return (
             <Animatable.View
               animation={expanded ? 'fadeInDown' : 'fadeInUp'}
               duration={350}
-              style={[styles.cardContainer, expanded && styles.cardExpanded]}>
+              style={[
+                styles.cardContainer,
+                expanded && styles.cardExpanded,
+                {marginBottom: 14, borderRadius: 14, overflow: 'hidden'},
+              ]}>
               <TouchableOpacity
                 onPress={() => toggleExpand(item.id)}
                 style={{paddingBottom: expanded ? 0 : 8}}
@@ -224,58 +166,130 @@ export default function Data() {
                     <View style={{flexDirection: 'row', alignItems: 'center'}}>
                       <Icon
                         name="person-circle-outline"
-                        size={20}
+                        size={22}
                         color="#1E90FF"
-                        style={{marginRight: 5}}
+                        style={{marginRight: 7}}
                       />
-                      <Text style={styles.cardTitle}>{item.trainer_name}</Text>
+                      <Text style={styles.cardTitle}>{item.employee_name}</Text>
                     </View>
-                    <Text style={styles.cardSubtitle}>
-                      {item.operator_name}
+                    <Text
+                      style={[
+                        styles.cardSubtitle,
+                        {marginTop: 2, fontSize: 13},
+                      ]}>
+                      JDE: {item.jde_no}
                     </Text>
                   </View>
                   <View style={{alignItems: 'flex-end'}}>
-                    <Text style={styles.cardSite}>{item.site}</Text>
+                    <Text style={[styles.cardSite, {fontWeight: 'bold'}]}>
+                      {item.site}
+                    </Text>
+                    <Text style={{fontSize: 12, color: '#888'}}>
+                      {item.month}/{item.year}
+                    </Text>
                     <Icon
                       name={
                         expanded ? 'chevron-up-outline' : 'chevron-down-outline'
                       }
-                      size={19}
+                      size={20}
                       color="#bbb"
+                      style={{marginTop: 3}}
                     />
                   </View>
                 </View>
               </TouchableOpacity>
+
               {expanded && (
-                <View style={styles.cardDetail}>
-                  <Text style={styles.cardDetailText}>Area: {item.area}</Text>
-                  <Text style={styles.cardDetailText}>
-                    Unit: {item.unit_number}
+                <View
+                  style={[
+                    styles.cardDetail,
+                    {paddingTop: 6, borderTopWidth: 1, borderTopColor: '#eee'},
+                  ]}>
+                  <Text style={[styles.cardSectionTitle, {marginBottom: 2}]}>
+                    KPI & Absensi
                   </Text>
                   <Text style={styles.cardDetailText}>
-                    Date: {item.date_mentoring.split(' ')[0]}
+                    Absensi: {item.a_attendance_ratio}%
                   </Text>
                   <Text style={styles.cardDetailText}>
-                    Hour: {item.start_time} - {item.end_time}
+                    Disiplin: {item.b_discipline}
                   </Text>
                   <Text style={styles.cardDetailText}>
-                    Point Observasi: {item.average_point_observation}
+                    Safety Awareness: {item.c_safety_awareness}
+                  </Text>
+
+                  <Text style={[styles.cardSectionTitle, {marginTop: 10}]}>
+                    WH Waste Equip
+                  </Text>
+                  {[1, 2, 3, 4, 5, 6].map(i => {
+                    const val = item[`d_wh_waste_equiptype${i}`];
+                    return val ? (
+                      <Text key={`wh-waste-${i}`} style={styles.cardDetailText}>
+                        Equip {i}: {val}
+                      </Text>
+                    ) : null;
+                  })}
+
+                  <Text style={[styles.cardSectionTitle, {marginTop: 10}]}>
+                    PTY Equip
+                  </Text>
+                  {[1, 2, 3, 4, 5, 6].map(i => {
+                    const val = item[`e_pty_equiptype${i}`];
+                    return val ? (
+                      <Text
+                        key={`pty-equip-${i}`}
+                        style={styles.cardDetailText}>
+                        Equip {i}: {val}
+                      </Text>
+                    ) : null;
+                  })}
+
+                  <Text style={[styles.cardSectionTitle, {marginTop: 10}]}>
+                    Point & Grade
                   </Text>
                   <Text style={styles.cardDetailText}>
-                    Point Mentoring: {item.average_point_mentoring}
+                    Point Eligibilitas:{' '}
+                    <Text style={{fontWeight: 'bold'}}>
+                      {item.point_eligibilitas}
+                    </Text>
                   </Text>
-                  <View style={styles.cardActionRow}>
-                    <TouchableOpacity
-                      style={styles.editButton}
-                      onPress={() => handleEdit(item)}>
-                      <Text style={styles.actionButtonText}>Edit</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.deleteButton}
-                      onPress={() => handleDelete(item.id)}>
-                      <Text style={styles.actionButtonText}>Hapus</Text>
-                    </TouchableOpacity>
-                  </View>
+                  <Text style={styles.cardDetailText}>
+                    Point Produksi:{' '}
+                    <Text style={{fontWeight: 'bold'}}>
+                      {item.point_produksi}
+                    </Text>
+                  </Text>
+                  <Text style={styles.cardDetailText}>
+                    Total Point:{' '}
+                    <Text style={{fontWeight: 'bold', color: '#1E90FF'}}>
+                      {item.total_point}
+                    </Text>
+                  </Text>
+                  <Text style={styles.cardDetailText}>
+                    Grade Bulanan:{' '}
+                    <Text style={{fontWeight: 'bold', color: '#E67E22'}}>
+                      {item.mop_bulanan_grade}
+                    </Text>
+                  </Text>
+
+                  <Text style={[styles.cardSectionTitle, {marginTop: 10}]}>
+                    Info Lain
+                  </Text>
+                  <Text style={styles.cardDetailText}>
+                    Tipe MOP: {item.mop_type} | Target Avg HM:{' '}
+                    {item.target_avg_hm}
+                  </Text>
+                  <Text style={styles.cardDetailText}>
+                    Point: A {item.point_a} | B {item.point_b} | C{' '}
+                    {item.point_c} | D {item.point_d} | E {item.point_e}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.cardDetailText,
+                      {marginBottom: 4, color: '#aaa', fontSize: 12},
+                    ]}>
+                    Input: {item.created_at && item.created_at.split('T')[0]}
+                  </Text>
                 </View>
               )}
             </Animatable.View>
