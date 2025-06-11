@@ -15,13 +15,15 @@ import {RootStackParamList} from '../navigation/types';
 import Icon from 'react-native-vector-icons/Ionicons';
 import * as Animatable from 'react-native-animatable';
 import {dashboardStyles as styles} from '../styles/dashboardStyles';
+import API_BASE_URL from '../config';
+
 if (!(global as any)._IS_NEW_ARCHITECTURE_ENABLED) {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 // Enable LayoutAnimation (Android only)
 
-type Props = NativeStackScreenProps<RootStackParamList, 'FullDashboard'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'AdminDashboard'>;
 
 const categories = [
   {
@@ -116,7 +118,7 @@ const AdminDashboard = ({navigation}: Props) => {
   const fetchSummary = async () => {
     try {
       setLoadingSummary(true);
-      const res = await fetch('http://10.0.2.2:8000/api/dashboard');
+      const res = await fetch(`${API_BASE_URL}/dashboard`);
       const json = await res.json();
       setSummary(json.data); // json.data: { mentoringToday, dailyToday, trainHoursToday }
     } catch (err) {
@@ -220,7 +222,7 @@ const AdminDashboard = ({navigation}: Props) => {
           style={styles.headerCard}>
           <Text style={styles.headerText}>
             <Icon name="person-circle-outline" size={22} color="#fff" /> Selamat
-            datang, {user.role}!
+            datang, {user.username}!
           </Text>
           <TouchableOpacity
             onPress={handleLogout}

@@ -17,6 +17,7 @@ import DropDownPicker from 'react-native-dropdown-picker';
 import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import {useNavigation, useRoute} from '@react-navigation/native';
+import API_BASE_URL from '../../config';
 
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
@@ -116,10 +117,9 @@ const EditTrainHours = () => {
           return;
         }
         // 1. Master Data
-        const master = await axios.get(
-          'http://10.0.2.2:8000/api/trainHours/create',
-          {headers: {Authorization: `Bearer ${token}`}},
-        );
+        const master = await axios.get(`${API_BASE_URL}/trainHours/create`, {
+          headers: {Authorization: `Bearer ${token}`},
+        });
         if (master.data.status) {
           const emp = master.data.data.employeeAuth;
           setFormData(prev => ({
@@ -163,10 +163,9 @@ const EditTrainHours = () => {
         }
 
         // 2. Data Train Hours by id
-        const detail = await axios.get(
-          `http://10.0.2.2:8000/api/trainHours/${id}`,
-          {headers: {Authorization: `Bearer ${token}`}},
-        );
+        const detail = await axios.get(`${API_BASE_URL}/trainHours/${id}`, {
+          headers: {Authorization: `Bearer ${token}`},
+        });
         if (detail.data.status) {
           const d = detail.data.data;
           // SET FORM DATA (semua harus string!)
@@ -307,7 +306,7 @@ const EditTrainHours = () => {
         return;
       }
       const response = await axios.put(
-        `http://10.0.2.2:8000/api/trainHours/${id}`,
+        `${API_BASE_URL}/trainHours/${id}`,
         formData,
         {
           headers: {

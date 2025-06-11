@@ -16,7 +16,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import DropDownPicker from 'react-native-dropdown-picker';
 import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import {useNavigation} from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
+import API_BASE_URL from '../../config';
 
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
@@ -118,7 +119,7 @@ const AddTrainHours = () => {
 
         // Get master data from API
         const response = await axios.get(
-          'http://10.0.2.2:8000/api/trainHours/create',
+          `${API_BASE_URL}/trainHours/create`,
           {
             headers: {Authorization: `Bearer ${token}`},
           },
@@ -250,7 +251,7 @@ const AddTrainHours = () => {
       }
 
       const response = await axios.post(
-        'http://10.0.2.2:8000/api/trainHours/store',
+        `${API_BASE_URL}/trainHours/store`,
         formData,
         {
           headers: {

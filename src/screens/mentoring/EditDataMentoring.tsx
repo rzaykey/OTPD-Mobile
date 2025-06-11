@@ -23,6 +23,7 @@ import {editDataStyles as styles} from '../../styles/editDataStyles';
 import {pickerSelectStyles} from '../../styles/pickerSelectStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useNavigation} from '@react-navigation/native';
+import API_BASE_URL from '../../config';
 
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
@@ -157,9 +158,7 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
     console.log('Running fetchData useEffect');
     const fetchData = async () => {
       try {
-        const res = await axios.get(
-          `http://10.0.2.2:8000/api/mentoring/${id}/edit`,
-        );
+        const res = await axios.get(`${API_BASE_URL}/mentoring/${id}/edit`);
         console.log('Data from API:', res.data);
 
         const {header, model_unit, unit, indicators, details, penilaian} =
@@ -232,7 +231,7 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
     if (text.length >= 2) {
       try {
         const response = await axios.get(
-          `http://10.0.2.2:8000/api/getEmployeeOperator?q=${text}`,
+          `${API_BASE_URL}/getEmployeeOperator?q=${text}`,
         );
         setSearchResults(response.data);
       } catch (error) {
@@ -655,7 +654,7 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
 
       // 5. API Call
       const response = await axios.put(
-        `http://10.0.2.2:8000/api/mentoring/${id}/update`,
+        `${API_BASE_URL}/mentoring/${id}/update`,
         payload,
         {
           headers: {

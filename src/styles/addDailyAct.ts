@@ -33,30 +33,34 @@ export const addDailyAct = StyleSheet.create({
     backgroundColor: '#e5e7eb',
     color: '#9ca3af',
   },
-  picker: {
-    inputIOS: {
-      fontSize: 14,
-      paddingVertical: 12,
-      paddingHorizontal: 10,
-      borderWidth: 1,
-      borderColor: '#d1d5db',
-      borderRadius: 8,
-      backgroundColor: '#fff',
-      color: '#111827',
-      paddingRight: 30,
-    },
-    inputAndroid: {
-      fontSize: 14,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-      borderWidth: 1,
-      borderColor: '#d1d5db',
-      borderRadius: 8,
-      backgroundColor: '#fff',
-      color: '#111827',
-      paddingRight: 30,
-    },
-  },
+  // picker: {
+  //   inputIOS: {
+  //     fontSize: 14,
+  //     paddingVertical: 12,
+  //     paddingHorizontal: 10,
+  //     borderWidth: 1,
+  //     borderColor: '#d1d5db',
+  //     borderRadius: 8,
+  //     backgroundColor: '#fff',
+  //     color: '#111827',
+  //     paddingRight: 30,
+  //   },
+  //   inputAndroid: {
+  //     height: 48, // atau coba 50
+  //     minHeight: 48, // tambahan jaga-jaga
+  //     paddingHorizontal: 16,
+  //     paddingVertical: 12, // tambahkan supaya teks tidak kepotong
+  //     borderWidth: 1,
+  //     borderColor: '#ccc',
+  //     borderRadius: 8,
+  //     fontSize: 16,
+  //     color: '#333',
+  //     justifyContent: 'center',
+  //     textAlignVertical: 'center', // ini penting di Android
+  //     backgroundColor: '#fff',
+  //     lineHeight: 24, // pastikan cukup besar
+  //   },
+  // },
   card: {
     backgroundColor: '#ffffff',
     borderRadius: 12,
@@ -97,5 +101,31 @@ export const addDailyAct = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  pickerSelectAndroid: {
+    height: 48, // atau coba 50
+    minHeight: 48, // tambahan jaga-jaga
+    paddingHorizontal: 16,
+    paddingVertical: 12, // tambahkan supaya teks tidak kepotong
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+    fontSize: 16,
+    color: '#333',
+    justifyContent: 'center',
+    textAlignVertical: 'center', // ini penting di Android
+    backgroundColor: '#fff',
+    lineHeight: 24, // pastikan cukup besar
+  },
+  pickerSelectIOS: {
+    height: 48,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    backgroundColor: '#fff',
+    color: '#333',
   },
 });

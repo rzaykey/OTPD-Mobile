@@ -20,6 +20,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {MopData} from '../../navigation/types';
 import * as Animatable from 'react-native-animatable';
 import Icon from 'react-native-vector-icons/Ionicons';
+import API_BASE_URL from '../../config';
 
 const pageSizeOptions = [5, 10, 50, 100];
 
@@ -43,7 +44,7 @@ export default function Mop() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch('http://10.0.2.2:8000/api/mopData');
+      const res = await fetch(`${API_BASE_URL}/mopData`);
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json.data || [];
       setData(arr);

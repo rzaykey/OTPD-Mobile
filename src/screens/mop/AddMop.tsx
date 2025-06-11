@@ -18,6 +18,7 @@ import DropDownPicker from 'react-native-dropdown-picker';
 import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import {useNavigation} from '@react-navigation/native';
+import API_BASE_URL from '../../config';
 
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
@@ -96,7 +97,7 @@ const AddDailyActivity = () => {
           site: site,
         }));
 
-        const kpiResp = await axios.get('http://10.0.2.2:8000/api/getKPI', {
+        const kpiResp = await axios.get(`${API_BASE_URL}/getKPI`, {
           headers: {Authorization: `Bearer ${token}`},
           params: {role},
         });
@@ -111,17 +112,14 @@ const AddDailyActivity = () => {
           const selectedKpi = kpiData[0].value;
           setFormData(prev => ({...prev, kpi_type: selectedKpi}));
 
-          const activityResp = await axios.get(
-            'http://10.0.2.2:8000/api/getActivity',
-            {
-              headers: {Authorization: `Bearer ${token}`},
-              params: {
-                kpi: selectedKpi,
-                role,
-                site,
-              },
+          const activityResp = await axios.get(`${API_BASE_URL}/getActivity`, {
+            headers: {Authorization: `Bearer ${token}`},
+            params: {
+              kpi: selectedKpi,
+              role,
+              site,
             },
-          );
+          });
 
           const actData = activityResp.data.map(act => ({
             label: act.activity,
@@ -131,7 +129,7 @@ const AddDailyActivity = () => {
         }
 
         const dayActResp = await axios.get(
-          'http://10.0.2.2:8000/api/dayActivities/createDailyAct',
+          `${API_BASE_URL}/dayActivities/createDailyAct`,
           {
             headers: {Authorization: `Bearer ${token}`},
           },
@@ -172,13 +170,10 @@ const AddDailyActivity = () => {
       const {token, role, site} = await getSession();
       if (!token || !role || !site) return;
 
-      const activityResp = await axios.get(
-        'http://10.0.2.2:8000/api/getActivity',
-        {
-          headers: {Authorization: `Bearer ${token}`},
-          params: {kpi: selectedKpi, role, site},
-        },
-      );
+      const activityResp = await axios.get(`${API_BASE_URL}/getActivity`, {
+        headers: {Authorization: `Bearer ${token}`},
+        params: {kpi: selectedKpi, role, site},
+      });
 
       const actData = activityResp.data.map(act => ({
         label: act.activity,
@@ -230,7 +225,7 @@ const AddDailyActivity = () => {
       }
 
       const response = await axios.post(
-        'http://10.0.2.2:8000/api/dayActivities',
+        `${API_BASE_URL}/dayActivities`,
         formData,
         {
           headers: {

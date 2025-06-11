@@ -18,6 +18,7 @@ import DropDownPicker from 'react-native-dropdown-picker';
 import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import {useNavigation} from '@react-navigation/native';
+import API_BASE_URL from '../../config';
 
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
@@ -83,9 +84,7 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
 
     const fetchData = async () => {
       try {
-        const res = await axios.get(
-          `http://10.0.2.2:8000/api/dayActivities/${id}/edit`,
-        );
+        const res = await axios.get(`${API_BASE_URL}/dayActivities/${id}/edit`);
 
         const rawData = res.data?.data;
 
@@ -149,7 +148,7 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
         }));
 
         // Fetch KPI options
-        const kpiResp = await axios.get('http://10.0.2.2:8000/api/getKPI', {
+        const kpiResp = await axios.get(`${API_BASE_URL}/getKPI`, {
           headers: {Authorization: `Bearer ${token}`},
           params: {role},
         });
@@ -166,17 +165,14 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
           setFormData(prev => ({...prev, kpi_type: selectedKpi}));
 
           // Fetch activity based on selected KPI
-          const activityResp = await axios.get(
-            'http://10.0.2.2:8000/api/getActivity',
-            {
-              headers: {Authorization: `Bearer ${token}`},
-              params: {
-                kpi: selectedKpi,
-                role,
-                site,
-              },
+          const activityResp = await axios.get(`${API_BASE_URL}/getActivity`, {
+            headers: {Authorization: `Bearer ${token}`},
+            params: {
+              kpi: selectedKpi,
+              role,
+              site,
             },
-          );
+          });
 
           const actData = activityResp.data.map(act => ({
             label: act.activity, // nama activity
@@ -199,13 +195,10 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
       const {token, role, site} = await getSession();
       if (!token || !role || !site) return;
 
-      const activityResp = await axios.get(
-        'http://10.0.2.2:8000/api/getActivity',
-        {
-          headers: {Authorization: `Bearer ${token}`},
-          params: {kpi: selectedKpi, role, site},
-        },
-      );
+      const activityResp = await axios.get(`${API_BASE_URL}/getActivity`, {
+        headers: {Authorization: `Bearer ${token}`},
+        params: {kpi: selectedKpi, role, site},
+      });
 
       const actData = activityResp.data.map(act => ({
         label: act.activity,
@@ -277,7 +270,7 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
       }
 
       const response = await axios.put(
-        `http://10.0.2.2:8000/api/dayActivities/${id}/update`,
+        `${API_BASE_URL}/dayActivities/${id}/update`,
         payload,
         {
           headers: {
@@ -328,7 +321,7 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
         if (!token || !role || !site) return;
 
         // Fetch KPI options
-        const kpiResp = await axios.get('http://10.0.2.2:8000/api/getKPI', {
+        const kpiResp = await axios.get(`${API_BASE_URL}/getKPI`, {
           headers: {Authorization: `Bearer ${token}`},
           params: {role},
         });
@@ -341,7 +334,7 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
 
         // Fetch edit data
         const editResp = await axios.get(
-          `http://10.0.2.2:8000/api/dayActivities/${id}/edit`,
+          `${API_BASE_URL}/dayActivities/${id}/edit`,
         );
         const rawData = editResp.data?.data;
         console.log('Raw Edit Data:', rawData);
@@ -368,17 +361,14 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
         setSelectedDate(new Date(rawData.date_activity));
 
         // Fetch activity options
-        const activityResp = await axios.get(
-          'http://10.0.2.2:8000/api/getActivity',
-          {
-            headers: {Authorization: `Bearer ${token}`},
-            params: {
-              kpi: selectedKpi,
-              role,
-              site,
-            },
+        const activityResp = await axios.get(`${API_BASE_URL}/getActivity`, {
+          headers: {Authorization: `Bearer ${token}`},
+          params: {
+            kpi: selectedKpi,
+            role,
+            site,
           },
-        );
+        });
         const actData = activityResp.data.map(act => ({
           label: act.activity,
           value: act.id,
@@ -411,7 +401,7 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
     const fetchUnitOptions = async () => {
       try {
         const token = await AsyncStorage.getItem('userToken');
-        const res = await axios.get('http://10.0.2.2:8000/api/getModelUnit', {
+        const res = await axios.get(`${API_BASE_URL}/getModelUnit`, {
           headers: {Authorization: `Bearer ${token}`},
         });
 

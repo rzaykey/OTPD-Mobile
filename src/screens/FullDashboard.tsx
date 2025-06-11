@@ -16,6 +16,8 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import * as Animatable from 'react-native-animatable';
 import {dashboardStyles as styles} from '../styles/dashboardStyles';
 import dayjs from 'dayjs';
+import API_BASE_URL from '../config';
+import {Alert, ToastAndroid} from 'react-native';
 
 if (!(global as any)._IS_NEW_ARCHITECTURE_ENABLED) {
   UIManager.setLayoutAnimationEnabledExperimental &&
@@ -104,7 +106,7 @@ const categories = [
         label: 'Index Mine Operator Performance',
         icon: 'document-text-outline',
         screen: 'Mop',
-      }
+      },
     ],
   },
 ];
@@ -135,7 +137,7 @@ const FullDashboard = ({navigation}: Props) => {
   const fetchSummary = async () => {
     try {
       setLoadingSummary(true);
-      const res = await fetch('http://10.0.2.2:8000/api/dashboard');
+      const res = await fetch(`${API_BASE_URL}/dashboard`);
       const json = await res.json();
       setSummary(json.data); // json.data: { mentoringToday, dailyToday, trainHoursToday }
     } catch (err) {
@@ -153,12 +155,6 @@ const FullDashboard = ({navigation}: Props) => {
     };
     fetchUser();
   }, []);
-
-  // Logout
-  const handleLogout = async () => {
-    await AsyncStorage.multiRemove(['userToken', 'userRole', 'userData']);
-    navigation.replace('Login');
-  };
 
   // Category (bottom menu) press
   const handleCategoryPress = (categoryId: string) => {
@@ -190,6 +186,43 @@ const FullDashboard = ({navigation}: Props) => {
   const selectedCategory = categories.find(
     cat => cat.id === selectedCategoryId,
   );
+
+  //logout
+  const handleLogout = () => {
+    // Konfirmasi dulu
+    Alert.alert(
+      'Konfirmasi Logout',
+      'Yakin ingin logout?',
+      [
+        {
+          text: 'Batal',
+          style: 'cancel',
+        },
+        {
+          text: 'Ya',
+          onPress: async () => {
+            // Proses logout
+            await AsyncStorage.removeItem('userToken');
+            await AsyncStorage.removeItem('userData');
+            await AsyncStorage.removeItem('userRole');
+
+            // Toast Android (atau Toast library)
+            ToastAndroid.show('Logout berhasil!', ToastAndroid.SHORT);
+
+            // Alert sukses (opsional, karena sudah ada toast)
+            Alert.alert('Logout', 'Anda berhasil logout!', [
+              {
+                text: 'OK',
+                onPress: () => navigation.replace('Login'),
+              },
+            ]);
+          },
+          style: 'destructive',
+        },
+      ],
+      {cancelable: true},
+    );
+  };
 
   useEffect(() => {
     const interval = setInterval(() => setDateTime(new Date()), 1000);
@@ -254,7 +287,7 @@ const FullDashboard = ({navigation}: Props) => {
           style={styles.headerCard}>
           <Text style={styles.headerText}>
             <Icon name="person-circle-outline" size={22} color="#fff" /> Selamat
-            datang, {user.role}!
+            datang, {user?.role || '-'} !
           </Text>
           <TouchableOpacity
             onPress={handleLogout}

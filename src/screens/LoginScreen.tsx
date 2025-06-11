@@ -13,7 +13,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {RootStackParamList} from '../navigation/types';
 import {loginStyles as styles} from '../styles/loginStyles';
-import LinearGradient from 'react-native-linear-gradient'; // ← Tambahkan ini
+import LinearGradient from 'react-native-linear-gradient';
+import API_BASE_URL from '../config';
+// OPTIONAL: gunakan icon jika sudah install
+// import Icon from 'react-native-vector-icons/Feather';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
@@ -33,24 +36,33 @@ const roleBasedDashboardName = (role: string) => {
 const LoginScreen = ({navigation}: Props) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [focus, setFocus] = useState({user: false, pass: false});
+  const [errors, setErrors] = useState({user: '', pass: ''});
 
   const handleLogin = async () => {
-    if (!username || !password) {
-      Alert.alert('Error', 'Username dan Password wajib diisi');
-      return;
-    }
+    let errUser = !username ? 'Username wajib diisi' : '';
+    let errPass = !password ? 'Password wajib diisi' : '';
+    setErrors({user: errUser, pass: errPass});
+    if (errUser || errPass) return;
 
     setLoading(true);
+    const payload = {
+      username: username.trim(),
+      password: password.trim(),
+    };
+    console.log('Payload yang dikirim ke backend:', payload);
 
     try {
-      const response = await fetch('http://10.0.2.2:8000/api/login', {
+      const response = await fetch(`${API_BASE_URL}/login`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({username, password}),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
+      console.log('Login response:', data);
       const token = data.access_token;
       const user = data.user;
 
@@ -58,7 +70,6 @@ const LoginScreen = ({navigation}: Props) => {
         await AsyncStorage.setItem('userToken', token);
         await AsyncStorage.setItem('userRole', user.role);
         await AsyncStorage.setItem('userData', JSON.stringify(user));
-
         navigation.replace(roleBasedDashboardName(user.role));
       } else {
         Alert.alert('Login gagal', data.message || 'Cek username & password');
@@ -87,26 +98,71 @@ const LoginScreen = ({navigation}: Props) => {
 
       <Text style={styles.title}>OTPD Apps - Login</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Username"
-        autoCapitalize="none"
-        value={username}
-        onChangeText={setUsername}
-      />
+      {/* Username Input */}
+      <View
+        style={[
+          styles.inputWrapper,
+          focus.user && styles.inputFocus,
+          errors.user ? styles.inputError : null,
+        ]}>
+        {/* <Icon name="user" size={20} color="#888" style={styles.inputIcon} /> */}
+        <TextInput
+          style={styles.input}
+          placeholder="Username"
+          autoCapitalize="none"
+          value={username}
+          onFocus={() => setFocus(f => ({...f, user: true}))}
+          onBlur={() => setFocus(f => ({...f, user: false}))}
+          onChangeText={text => {
+            setUsername(text);
+            if (text) setErrors(e => ({...e, user: ''}));
+          }}
+          returnKeyType="next"
+        />
+      </View>
+      {errors.user ? <Text style={styles.errorText}>{errors.user}</Text> : null}
 
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
+      {/* Password Input */}
+      <View
+        style={[
+          styles.inputWrapper,
+          focus.pass && styles.inputFocus,
+          errors.pass ? styles.inputError : null,
+        ]}>
+        {/* <Icon name="lock" size={20} color="#888" style={styles.inputIcon} /> */}
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          secureTextEntry={!showPassword}
+          value={password}
+          autoCapitalize="none"
+          onFocus={() => setFocus(f => ({...f, pass: true}))}
+          onBlur={() => setFocus(f => ({...f, pass: false}))}
+          onChangeText={text => {
+            setPassword(text);
+            if (text) setErrors(e => ({...e, pass: ''}));
+          }}
+          returnKeyType="done"
+        />
+        <TouchableOpacity
+          style={styles.iconBtn}
+          onPress={() => setShowPassword(v => !v)}>
+          {/* <Icon name={showPassword ? 'eye-off' : 'eye'} size={20} color="#888" /> */}
+          <Text style={{color: '#888', fontSize: 16}}>
+            {showPassword ? '🙈' : '👁️'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+      {errors.pass ? <Text style={styles.errorText}>{errors.pass}</Text> : null}
 
+      {/* Login Button */}
       <TouchableOpacity
-        style={[styles.button, loading && styles.buttonDisabled]}
+        style={[
+          styles.button,
+          (loading || !username || !password) && styles.buttonDisabled,
+        ]}
         onPress={handleLogin}
-        disabled={loading}>
+        disabled={loading || !username || !password}>
         {loading ? (
           <ActivityIndicator color="#fff" />
         ) : (

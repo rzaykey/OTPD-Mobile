@@ -20,6 +20,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {DailyActivity} from '../../navigation/types';
 import * as Animatable from 'react-native-animatable';
 import Icon from 'react-native-vector-icons/Ionicons';
+import API_BASE_URL from '../../config';
 
 const pageSizeOptions = [5, 10, 50, 100];
 
@@ -43,7 +44,7 @@ export default function Daily() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch('http://10.0.2.2:8000/api/dayActivities');
+      const res = await fetch(`${API_BASE_URL}/dayActivities`);
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json.data || [];
       setData(arr);
@@ -104,7 +105,7 @@ export default function Daily() {
             onPress: async () => {
               try {
                 const res = await fetch(
-                  `http://10.0.2.2:8000/api/dayActivities/${id}/delete`,
+                  `${API_BASE_URL}/dayActivities/${id}/delete`,
                   {
                     method: 'DELETE',
                     headers: {

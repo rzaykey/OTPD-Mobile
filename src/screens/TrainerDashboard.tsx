@@ -15,6 +15,8 @@ import {RootStackParamList} from '../navigation/types';
 import Icon from 'react-native-vector-icons/Ionicons';
 import * as Animatable from 'react-native-animatable';
 import {dashboardStyles as styles} from '../styles/dashboardStyles';
+import API_BASE_URL from '../config';
+
 if (!(global as any)._IS_NEW_ARCHITECTURE_ENABLED) {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -116,7 +118,7 @@ const TrainerDashboard = ({navigation}: Props) => {
   const fetchSummary = async () => {
     try {
       setLoadingSummary(true);
-      const res = await fetch('http://10.0.2.2:8000/api/dashboard');
+      const res = await fetch(`${API_BASE_URL}/dashboard`);
       const json = await res.json();
       setSummary(json.data); // json.data: { mentoringToday, dailyToday, trainHoursToday }
     } catch (err) {

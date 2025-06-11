@@ -20,6 +20,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {TrainHours} from '../../navigation/types';
 import * as Animatable from 'react-native-animatable';
 import Icon from 'react-native-vector-icons/Ionicons';
+import API_BASE_URL from '../../config';
 
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
@@ -43,7 +44,7 @@ export default function Data() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch('http://10.0.2.2:8000/api/trainHours');
+      const res = await fetch(`${API_BASE_URL}/trainHours`);
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json.data.data || [];
       setData(arr);
@@ -73,69 +74,6 @@ export default function Data() {
   const toggleExpand = (id: number) => {
     setExpandedId(prev => (prev === id ? null : id));
   };
-
-  const handleEdit = (item: TrainHours) => {
-    Alert.alert(
-      'Edit Data',
-      `Apakah Anda ingin mengedit data untuk ${item.employee_name}?`,
-      [
-        {text: 'Batal', style: 'cancel'},
-        {
-          text: 'Edit',
-          onPress: () => {
-            navigation.navigate('EditTrainHours', {id: item.id});
-          },
-        },
-      ],
-    );
-  };
-
-  const handleDelete = useCallback(
-    async (id: number) => {
-      try {
-        const token = await AsyncStorage.getItem('userToken');
-        if (!token) return Alert.alert('Sesi Habis', 'Silakan login kembali.');
-
-        Alert.alert('Konfirmasi Hapus', 'Yakin ingin menghapus data ini?', [
-          {text: 'Batal', style: 'cancel'},
-          {
-            text: 'Hapus',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                const res = await fetch(
-                  `http://10.0.2.2:8000/api/trainHours/${id}/delete`,
-                  {
-                    method: 'DELETE',
-                    headers: {
-                      Authorization: `Bearer ${token}`,
-                      'Content-Type': 'application/json',
-                      Accept: 'application/json',
-                    },
-                  },
-                );
-                const text = await res.text();
-                const json = JSON.parse(text);
-                if (json.success) {
-                  Alert.alert('Sukses', json.message);
-                  fetchData();
-                } else {
-                  Alert.alert('Gagal', json.message || 'Gagal menghapus data.');
-                }
-              } catch (err) {
-                console.error('Delete error:', err);
-                Alert.alert('Error', 'Terjadi kesalahan saat menghapus.');
-              }
-            },
-          },
-        ]);
-      } catch (err) {
-        console.error(err);
-        Alert.alert('Error', 'Terjadi kesalahan.');
-      }
-    },
-    [fetchData],
-  );
 
   const filteredData = data.filter(item => {
     const q = searchQuery.toLowerCase();
@@ -273,18 +211,6 @@ export default function Data() {
                       : 0}
                     %
                   </Text>
-                  <View style={styles.cardActionRow}>
-                    <TouchableOpacity
-                      style={styles.editButton}
-                      onPress={() => handleEdit(item)}>
-                      <Text style={styles.actionButtonText}>Edit</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.deleteButton}
-                      onPress={() => handleDelete(item.id)}>
-                      <Text style={styles.actionButtonText}>Hapus</Text>
-                    </TouchableOpacity>
-                  </View>
                 </View>
               )}
             </Animatable.View>

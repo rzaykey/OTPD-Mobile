@@ -20,6 +20,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {MentoringData} from '../../navigation/types';
 import * as Animatable from 'react-native-animatable';
 import Icon from 'react-native-vector-icons/Ionicons';
+import API_BASE_URL from '../../config';
 
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
@@ -43,7 +44,7 @@ export default function Data() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch('http://10.0.2.2:8000/api/mentoring-data');
+      const res = await fetch(`${API_BASE_URL}/mentoring-data`);
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json.data || [];
       setData(arr);
@@ -104,7 +105,7 @@ export default function Data() {
             onPress: async () => {
               try {
                 const res = await fetch(
-                  `http://10.0.2.2:8000/api/mentoring/${id}/delete`,
+                  `${API_BASE_URL}/mentoring/${id}/delete`,
                   {
                     method: 'DELETE',
                     headers: {

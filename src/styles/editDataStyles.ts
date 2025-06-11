@@ -260,4 +260,19 @@ export const editDataStyles = StyleSheet.create({
     padding: 10,
     borderRadius: 8,
   },
+  pickerSelectAndroid: {
+    height: 48, // atau coba 50
+    minHeight: 48, // tambahan jaga-jaga
+    paddingHorizontal: 16,
+    paddingVertical: 12, // tambahkan supaya teks tidak kepotong
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+    fontSize: 16,
+    color: '#333',
+    justifyContent: 'center',
+    textAlignVertical: 'center', // ini penting di Android
+    backgroundColor: '#fff',
+    lineHeight: 24, // pastikan cukup besar
+  },
 });

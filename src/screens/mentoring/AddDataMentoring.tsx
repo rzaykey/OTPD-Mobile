@@ -20,6 +20,7 @@ import {pickerSelectStyles} from '../../styles/pickerSelectStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useNavigation} from '@react-navigation/native';
 import {RootStackParamList} from '../../navigation/types';
+import API_BASE_URL from '../../config';
 
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
@@ -167,7 +168,7 @@ const AddDataMentoring = ({route}: Props) => {
     try {
       const upperType = unitType.toUpperCase();
       const response = await fetch(
-        `http://10.0.2.2:8000/api/mentoring/createData?type_mentoring=${upperType}`,
+        `${API_BASE_URL}/mentoring/createData?type_mentoring=${upperType}`,
       );
       const result = await response.json();
 
@@ -208,9 +209,7 @@ const AddDataMentoring = ({route}: Props) => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await axios.get(
-          'http://10.0.2.2:8000/api/mentoring/createData',
-        );
+        const res = await axios.get(`${API_BASE_URL}/mentoring/createData`);
         const {
           header,
           siteList: site_list,
@@ -290,7 +289,7 @@ const AddDataMentoring = ({route}: Props) => {
     if (text.length >= 2) {
       try {
         const response = await axios.get(
-          `http://10.0.2.2:8000/api/getEmployeeOperator?q=${text}`,
+          `${API_BASE_URL}/getEmployeeOperator?q=${text}`,
         );
         setSearchResults(response.data);
       } catch (error) {
