@@ -139,6 +139,7 @@ const FullDashboard = ({navigation}: Props) => {
       setLoadingSummary(true);
       const res = await fetch(`${API_BASE_URL}/dashboard`);
       const json = await res.json();
+      console.log(API_BASE_URL);
       setSummary(json.data); // json.data: { mentoringToday, dailyToday, trainHoursToday }
     } catch (err) {
       // handle error (alert, dsb)
@@ -172,12 +173,20 @@ const FullDashboard = ({navigation}: Props) => {
     }
   };
 
+  const unitTypeMapping: {[key: string]: number} = {
+    DIGGER: 3,
+    BULLDOZER: 2,
+    GRADER: 5,
+    HAULER: 4,
+  };
+
   // Subsubmenu press
   const handleSubsubmenuPress = (item: any) => {
     if (item.screen === 'AddDataMentoring') {
       // Pass unitType for AddDataMentoring
       const unitType = item.label.replace('Form ', '').toUpperCase();
-      navigation.navigate(item.screen, {data: {unitType}});
+      const unitTypeId = unitTypeMapping[unitType];
+      navigation.navigate(item.screen, {data: {unitType, unitTypeId}});
     } else {
       navigation.navigate(item.screen);
     }

@@ -18,69 +18,21 @@ import RNPickerSelect from 'react-native-picker-select';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Icon from 'react-native-vector-icons/Ionicons';
 import CheckBox from '@react-native-community/checkbox';
-
 import {editDataStyles as styles} from '../../styles/editDataStyles';
 import {pickerSelectStyles} from '../../styles/pickerSelectStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useNavigation} from '@react-navigation/native';
 import API_BASE_URL from '../../config';
 
+// Enable LayoutAnimation for Android
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
-// --- Type definitions ---
-type IndicatorDetail = {
-  fid_indicator: string | number;
-  is_observasi?: '0' | '1';
-  is_mentoring?: '0' | '1';
-  note_observasi?: string;
-  [key: string]: any;
-};
 
-type IndicatorList = {
-  [category: string]: {
-    id: string | number;
-    param1: string;
-    [key: string]: any;
-  }[];
-};
-
-type Points = {
-  [category: string]: {
-    indicator: string;
-    yscore: number;
-    point: number;
-    [key: string]: any;
-  };
-};
-
-type Penilaian = {
-  id: number;
-  fid_mentoring: string;
-  indicator: string;
-  yscore: string;
-  point: string;
-  created_at: string;
-  created_by: string;
-  updated_at: string | null;
-  updated_by: string | null;
-  type_penilaian: 'observasi' | 'mentoring';
-}[];
-
-type ToggleCardProps = {
-  title: string;
-  children: React.ReactNode;
-  defaultExpanded?: boolean;
-};
-
-const ToggleCard: React.FC<ToggleCardProps> = ({
-  title,
-  children,
-  defaultExpanded = true,
-}) => {
+// ToggleCard Component: Untuk expandable section (misal: Header, Unit, dll)
+const ToggleCard = ({title, children, defaultExpanded = true}) => {
   const [expanded, setExpanded] = useState(defaultExpanded);
-
   return (
     <View style={styles.card}>
       <TouchableOpacity
@@ -98,112 +50,67 @@ const ToggleCard: React.FC<ToggleCardProps> = ({
   );
 };
 
-const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
+// Komponen utama EditDataMentoring
+const EditDataMentoring = ({route}) => {
   const {id} = route.params;
 
+  // === State definitions ===
   const [loading, setLoading] = useState(true);
-  const [headerData, setHeaderData] = useState<any | null>(null);
-
-  const [operatorJDE, setOperatorJDE] = useState<string | null>(null);
-  const [operatorName, setOperatorName] = useState<string | null>(null);
-
+  const [headerData, setHeaderData] = useState(null);
+  const [operatorJDE, setOperatorJDE] = useState(null);
+  const [operatorName, setOperatorName] = useState(null);
+  const [site, setSite] = useState(null);
   const [operatorQuery, setOperatorQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
-
-  const [rawSiteList, setRawSiteList] = useState<any[]>([]);
-  const [siteList, setSiteList] = useState<{label: string; value: string}[]>(
-    [],
-  );
-
-  const [selectedSite, setSelectedSite] = useState<string | null>(null);
-  const [modelUnitRaw, setModelUnitRaw] = useState<any[]>([]);
-  const [unitRaw, setUnitRaw] = useState<any[]>([]);
-  const [unitTypes, setUnitTypes] = useState<{label: string; value: string}[]>(
-    [],
-  );
-  const [modelUnits, setModelUnits] = useState<
-    {label: string; value: string}[]
-  >([]);
-  const [unitNumbers, setUnitNumbers] = useState<
-    {label: string; value: string}[]
-  >([]);
-
-  const [unitType, setUnitType] = useState<string | null>(null);
-  const [unitModel, setUnitModel] = useState<string | null>(null);
-  const [unitNumber, setUnitNumber] = useState<string | null>(null);
-
+  const [area, setArea] = useState(null);
+  const [modelUnitRaw, setModelUnitRaw] = useState([]);
+  const [unitRaw, setUnitRaw] = useState([]);
+  const [unitTypes, setUnitTypes] = useState([]);
+  const [modelUnits, setModelUnits] = useState([]);
+  const [unitNumbers, setUnitNumbers] = useState([]);
+  const [unitType, setUnitType] = useState(null);
+  const [unitModel, setUnitModel] = useState(null);
+  const [unitNumber, setUnitNumber] = useState(null);
   const [dateMentoring, setDateMentoring] = useState(new Date());
   const [startTime, setStartTime] = useState(new Date());
   const [endTime, setEndTime] = useState(new Date());
-
-  const [showDatePicker, setShowDatePicker] = React.useState(false);
-  const [showStartTimePicker, setShowStartTimePicker] = React.useState(false);
-  const [showEndTimePicker, setShowEndTimePicker] = React.useState(false);
-
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [expanded, setExpanded] = useState(true);
-
-  const [indicators, setIndicators] = useState<IndicatorList>({});
-  const [visibleCategories, setVisibleCategories] = useState<{
-    [key: string]: boolean;
-  }>({});
-
-  const [editableDetails, setEditableDetails] = useState<IndicatorDetail[]>([]);
-  const [points, setPoints] = useState<Points>({});
-  // const [penilaian, setPenilaian] = useState<PenilaianItem[]>([]);
-  const [penilaian, setPenilaian] = useState<Penilaian>([]);
+  const [indicators, setIndicators] = useState({});
+  const [visibleCategories, setVisibleCategories] = useState({});
+  const [editableDetails, setEditableDetails] = useState([]);
+  const [points, setPoints] = useState({});
   const navigation = useNavigation();
-  // Fetch data
+
+  // --- Fetch Data Mentoring Edit dari API ---
   useEffect(() => {
-    console.log('Running fetchData useEffect');
     const fetchData = async () => {
       try {
         const res = await axios.get(`${API_BASE_URL}/mentoring/${id}/edit`);
-        console.log('Data from API:', res.data);
-
-        const {header, model_unit, unit, indicators, details, penilaian} =
+        const {header, model_unit, unit, indicators, details} =
           res.data?.data || {};
-
         setModelUnitRaw(model_unit || []);
         setUnitRaw(unit || []);
         setIndicators(indicators || {});
         setEditableDetails(details || []);
-        // setPoints(penilaianAPI || {});
-        setPenilaian(penilaian || []);
 
         if (!header) {
           alert('Data header tidak ditemukan');
           setLoading(false);
           return;
         }
-
-        const {siteList: apiSiteList} = res.data.data || {};
-        if (apiSiteList) {
-          setRawSiteList(apiSiteList); // Simpan data mentah dulu
-        }
-
-        const classes = Array.from(
-          new Set(
-            model_unit.map((item: any) => item.class?.trim()).filter(Boolean),
-          ),
-        );
-        const classOptions = classes.map((c: string) => ({label: c, value: c}));
-
-        const headerUnitType = header.unit_type?.trim();
-        if (headerUnitType && !classes.includes(headerUnitType)) {
-          classOptions.push({label: headerUnitType, value: headerUnitType});
-        }
-
-        setUnitTypes(classOptions);
         setHeaderData(header);
-        setUnitType(headerUnitType || null);
         setOperatorJDE(header.operator_jde);
         setOperatorName(header.operator_name);
+        setSite(header.header_site || header.site || '');
         setOperatorQuery(`${header.operator_jde} - ${header.operator_name}`);
 
-        if (header.date_mentoring) {
+        // Isi field waktu dari API
+        if (header.date_mentoring)
           setDateMentoring(new Date(header.date_mentoring.split(' ')[0]));
-        }
         if (header.start_time) {
           const [sh, sm] = header.start_time.split(':').map(Number);
           const now = new Date();
@@ -214,6 +121,21 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
           const now = new Date();
           setEndTime(new Date(now.setHours(eh, em, 0, 0)));
         }
+
+        // Unit type options dari API
+        const uniqueClasses = {};
+        (model_unit || []).forEach(item => {
+          uniqueClasses[String(item.class_id)] = item.class;
+        });
+        const classOptions = Object.entries(uniqueClasses).map(
+          ([value, label]) => ({label, value: String(value)}),
+        );
+        const headerClassId = header.class_id || header.unit_type;
+        setUnitType(headerClassId ? String(headerClassId) : null);
+        setUnitTypes(classOptions);
+
+        // Isi area jika ada di API
+        setArea(header.area || '');
       } catch (error) {
         console.error('Fetch data error:', error);
         alert('Gagal mengambil data');
@@ -221,11 +143,11 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
         setLoading(false);
       }
     };
-
     fetchData();
   }, [id]);
 
-  const searchOperator = async (text: string) => {
+  // --- Search Operator Handler ---
+  const searchOperator = async text => {
     setOperatorQuery(text);
     setShowResults(true);
     if (text.length >= 2) {
@@ -242,84 +164,55 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
     }
   };
 
-  const handleSelectOperator = (item: any) => {
+  // --- Pilih Operator dari hasil search ---
+  const handleSelectOperator = item => {
     setOperatorJDE(item.employeeId);
     setOperatorName(item.EmployeeName);
     setOperatorQuery(`${item.employeeId} - ${item.EmployeeName}`);
     setShowResults(false);
   };
 
-  useEffect(() => {
-    if (rawSiteList.length > 0) {
-      const sites = rawSiteList
-        .filter(site => site.active === '1')
-        .map(site => ({
-          label: site.name_site,
-          value: site.code_site,
-        }));
-      setSiteList(sites);
-
-      // Set selected site default dari headerData
-      if (headerData?.site) {
-        setSelectedSite(headerData.site);
-      }
-    }
-  }, [rawSiteList, headerData]);
-
-  // Update modelUnits when unitType changes
+  // --- Update Model Unit ketika Unit Type berubah ---
   useEffect(() => {
     if (!unitType || !modelUnitRaw.length) return;
-
     const filteredModels = modelUnitRaw
-      .filter(
-        (m: any) =>
-          m.class?.trim().toLowerCase() === unitType.trim().toLowerCase(),
-      )
-      .map((m: any) => ({label: m.model, value: String(m.id)}));
-
+      .filter(m => String(m.class_id) === String(unitType))
+      .map(m => ({label: m.model, value: String(m.model_id)}));
     setModelUnits(filteredModels);
 
-    const headerUnitModel = String(headerData?.unit_model);
-    const found = filteredModels.find(m => m.value === headerUnitModel);
-    setUnitModel(found ? headerUnitModel : null);
+    let modelId = headerData?.model_id;
+    if (!modelId && headerData?.unit_model) {
+      const foundModelRaw = modelUnitRaw.find(
+        m =>
+          String(m.model_id) === String(headerData.unit_model) ||
+          String(m.model) === String(headerData.unit_model),
+      );
+      modelId = foundModelRaw ? String(foundModelRaw.model_id) : null;
+    }
+    setUnitModel(modelId);
   }, [unitType, modelUnitRaw, headerData]);
 
-  // Update unitNumbers when unitModel changes
+  // --- Update Unit Number ketika Model berubah ---
   useEffect(() => {
     if (!unitModel || !unitRaw.length) return;
-
     const filteredUnits = unitRaw
       .filter(u => String(u.fid_model) === String(unitModel))
       .map(u => ({label: u.no_unit, value: String(u.id)}));
-
-    // Jika unit dari headerData masih valid, set. Jika tidak, reset.
-    const headerUnitNumberId = String(headerData?.unit_number);
-    if (
-      headerUnitNumberId &&
-      filteredUnits.some(u => u.value === headerUnitNumberId)
-    ) {
-      setUnitNumber(headerUnitNumberId);
-    } else {
-      setUnitNumber(null);
-    }
-
     setUnitNumbers(filteredUnits);
+
+    let unitId = headerData?.unit_number_id;
+    if (!unitId && headerData?.unit_number) {
+      const foundUnitRaw = unitRaw.find(
+        u =>
+          String(u.id) === String(headerData.unit_number) ||
+          String(u.no_unit) === String(headerData.unit_number),
+      );
+      unitId = foundUnitRaw ? String(foundUnitRaw.id) : null;
+    }
+    setUnitNumber(unitId);
   }, [unitModel, unitRaw, headerData]);
 
-  // ✅ Tambahkan preload hanya SEKALI setelah headerData muncul (hindari overwrite setiap kali model berubah)
-  useEffect(() => {
-    if (headerData?.unit_number) {
-      setUnitNumber(String(headerData.unit_number));
-    }
-  }, [headerData?.unit_number]);
-
-  const updateSite = newSite => {
-    setHeaderData(prev => ({
-      ...prev,
-      site: newSite,
-    }));
-  };
-
+  // --- Handle Edit/Change Note per indikator ---
   const updateNote = (fid, note) => {
     setEditableDetails(prev => {
       const existing = prev.find(d => d.fid_indicator === fid);
@@ -340,6 +233,7 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
     });
   };
 
+  // --- Handle Toggle Checkbox Observasi/Mentoring per indikator ---
   const toggleCheckbox = (fid, field) => {
     setEditableDetails(prev => {
       const existing = prev.find(d => d.fid_indicator === fid);
@@ -362,23 +256,13 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
     });
   };
 
-  const calculatePoints = (details: IndicatorDetail[]) => {
-    const newPoints: {
-      [kategori: string]: {
-        indicator: string;
-        yscoreObservasi: number;
-        pointObservasi: number;
-        yscoreMentoring: number;
-        pointMentoring: number;
-      };
-    } = {};
-
+  // --- Hitung Poin Live per kategori ---
+  const calculatePoints = details => {
+    const newPoints = {};
     for (const kategori in indicators) {
       const indicatorList = indicators[kategori];
-
       let yObs = 0;
       let yMentor = 0;
-
       indicatorList.forEach(ind => {
         const detail = details.find(
           d => String(d.fid_indicator) === String(ind.id),
@@ -388,7 +272,6 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
           if (detail.is_mentoring === '1') yMentor += 1;
         }
       });
-
       newPoints[kategori] = {
         indicator: kategori,
         yscoreObservasi: yObs,
@@ -397,76 +280,44 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
         pointMentoring: yMentor * 12.5,
       };
     }
-
     return newPoints;
   };
 
+  // --- Update Points ketika detail berubah ---
   useEffect(() => {
     const updatedPoints = calculatePoints(editableDetails);
     setPoints(updatedPoints);
   }, [editableDetails]);
 
-  // Date and time pickers handlers
+  // --- Handler DateTime Picker (tanggal, waktu mulai/selesai) ---
   const onChangeDate = (event, selectedDate) => {
-    if (Platform.OS === 'android') {
-      setShowDatePicker(false);
-    }
+    if (Platform.OS === 'android') setShowDatePicker(false);
     if (event.type === 'dismissed') return;
     if (selectedDate) setDateMentoring(selectedDate);
   };
-
   const onChangeStartTime = (event, selectedTime) => {
-    if (Platform.OS === 'android') {
-      setShowStartTimePicker(false);
-    }
+    if (Platform.OS === 'android') setShowStartTimePicker(false);
     if (event.type === 'dismissed') return;
     if (selectedTime) setStartTime(selectedTime);
   };
-
   const onChangeEndTime = (event, selectedTime) => {
-    if (Platform.OS === 'android') {
-      setShowEndTimePicker(false);
-    }
+    if (Platform.OS === 'android') setShowEndTimePicker(false);
     if (event.type === 'dismissed') return;
     if (selectedTime) setEndTime(selectedTime);
   };
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#1E90FF" />
-      </View>
-    );
-  }
-
-  if (!headerData) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.errorText}>Data tidak ditemukan</Text>
-      </View>
-    );
-  }
-
-  if (loading) {
-    return (
-      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
-        <ActivityIndicator size="large" />
-        <Text>Loading data...</Text>
-      </View>
-    );
-  }
-
-  const toggleCategoryVisibility = (kategori: string) => {
+  // --- Toggle Kategori Indikator di Section ---
+  const toggleCategoryVisibility = kategori => {
     setVisibleCategories(prev => ({
       ...prev,
       [kategori]: !prev[kategori],
     }));
   };
 
-  const renderLivePointsSection = (type: 'observasi' | 'mentoring') => {
+  // --- Render Rekap Poin Observasi/Mentoring ---
+  const renderLivePointsSection = type => {
     const isObs = type === 'observasi';
     const dataFiltered = Object.values(points);
-
     const totalYScore = dataFiltered.reduce(
       (sum, p) => sum + (isObs ? p.yscoreObservasi : p.yscoreMentoring),
       0,
@@ -479,7 +330,6 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
       dataFiltered.length && !isNaN(totalPoint)
         ? (totalPoint / dataFiltered.length).toFixed(1)
         : '0.0';
-
     return {
       totalYScore,
       totalPoint,
@@ -505,7 +355,6 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
                 </View>
               </View>
             ))}
-
             <View style={[styles.pointCard, styles.summaryCard]}>
               <Text style={[styles.pointCategory, {fontWeight: 'bold'}]}>
                 AVERAGE POINT
@@ -525,100 +374,50 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
     };
   };
 
-  const calculateScores = (
-    points: Record<string, any>,
-    type: 'observasi' | 'mentoring',
-  ) => {
-    const data = Object.values(points);
-    const totalIndicators = data.length;
-
-    // Hitung jumlah checklist yang dicentang
-    const totalChecked = data.reduce((sum, item) => {
-      const isChecked =
-        type === 'observasi'
-          ? item.is_observasi === '1' || item.is_observasi === true
-          : item.is_mentoring === '1' || item.is_mentoring === true;
-      return sum + (isChecked ? 1 : 0);
-    }, 0);
-
-    // Hitung total point
-    const totalPoint = data.reduce((sum, item) => {
-      const point =
-        type === 'observasi'
-          ? item.pointObservasi || 0
-          : item.pointMentoring || 0;
-      return sum + point;
-    }, 0);
-
-    const averageYScore =
-      totalIndicators > 0
-        ? (totalChecked / totalIndicators).toFixed(2)
-        : '0.00';
-
-    const averagePoint =
-      totalIndicators > 0 ? (totalPoint / totalIndicators).toFixed(2) : '0.00';
-
-    return {
-      averageYScore,
-      averagePoint,
-    };
-  };
-
   const observasiPoints = renderLivePointsSection('observasi');
   const mentoringPoints = renderLivePointsSection('mentoring');
 
+  // --- Submit Update Mentoring ke API ---
   const handleSubmit = async () => {
     try {
       setLoading(true);
-
-      // 1. Authentication Check
       const token = await AsyncStorage.getItem('userToken');
-      if (!token) {
+      if (!token)
         throw new Error('Sesi telah berakhir. Silakan login kembali.');
-      }
-
-      // 2. Field Validation
-      if (!unitType || !unitModel || !unitNumber) {
+      if (!unitType || !unitModel || !unitNumber)
         throw new Error('Harap lengkapi semua informasi unit');
-      }
 
-      // 3. Calculate Points Data
-      const calculatePoints = (type: 'observasi' | 'mentoring') => {
+      // Kalkulasi poin
+      const calcPoints = type => {
         const isObs = type === 'observasi';
         const dataFiltered = Object.values(points);
-
         const totalYScore = dataFiltered.reduce(
           (sum, p) => sum + (isObs ? p.yscoreObservasi : p.yscoreMentoring),
           0,
         );
-
         const totalPoint = dataFiltered.reduce(
           (sum, p) => sum + (isObs ? p.pointObservasi : p.pointMentoring),
           0,
         );
-
         const averagePoint =
           dataFiltered.length && !isNaN(totalPoint)
             ? parseFloat((totalPoint / dataFiltered.length).toFixed(1))
             : 0;
-
         return {totalYScore, averagePoint};
       };
 
-      const observasiPoints = calculatePoints('observasi');
-      const mentoringPoints = calculatePoints('mentoring');
+      const observasi = calcPoints('observasi');
+      const mentoring = calcPoints('mentoring');
 
-      // 4. Prepare Payload
+      // Payload API update
       const payload = {
-        // Basic Information
-
-        // Operator info tambahan
         operator_jde: operatorJDE,
         operator_name: operatorName,
         unit_type: unitType,
         unit_model: unitModel,
         unit_number: unitNumber,
-        site: headerData.site,
+        header_site: site,
+        area: area,
         date_mentoring: dateMentoring.toISOString().split('T')[0],
         start_time: `${startTime.getHours()}:${String(
           startTime.getMinutes(),
@@ -626,14 +425,10 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
         end_time: `${endTime.getHours()}:${String(
           endTime.getMinutes(),
         ).padStart(2, '0')}`,
-
-        // Calculated Points
-        average_yscore_observation: observasiPoints.totalYScore,
-        average_point_observation: observasiPoints.averagePoint,
-        average_yscore_mentoring: mentoringPoints.totalYScore,
-        average_point_mentoring: mentoringPoints.averagePoint,
-
-        // Indicator Details
+        average_yscore_observation: observasi.totalYScore,
+        average_point_observation: observasi.averagePoint,
+        average_yscore_mentoring: mentoring.totalYScore,
+        average_point_mentoring: mentoring.averagePoint,
         indicators: Object.values(indicators)
           .flat()
           .map(ind => {
@@ -648,11 +443,8 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
             };
           }),
       };
-
       console.log('Payload to be submitted:', payload);
-      console.log('Payload:', payload); // pastikan ini valid
 
-      // 5. API Call
       const response = await axios.put(
         `${API_BASE_URL}/mentoring/${id}/update`,
         payload,
@@ -665,24 +457,18 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
           withCredentials: true,
         },
       );
-      // 6. Handle Response
       if (response.data.success) {
         alert('Data mentoring berhasil diperbarui!');
         navigation.goBack();
       } else {
         throw new Error(response.data.message || 'Gagal memperbarui data');
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Submission error:', error);
-      console.log('Status:', error.response?.status);
-      console.log('Message:', error.response?.data); // LIHAT INI
       if (error.response?.status === 401) {
         await AsyncStorage.removeItem('userToken');
         alert('Sesi telah berakhir. Silakan login kembali.');
-        navigation.reset({
-          index: 0,
-          routes: [{name: 'Login'}],
-        });
+        navigation.reset({index: 0, routes: [{name: 'Login'}]});
       } else {
         alert(
           `Error: ${
@@ -697,6 +483,23 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
     }
   };
 
+  // --- Render UI ---
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#1E90FF" />
+      </View>
+    );
+  }
+
+  if (!headerData) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.errorText}>Data tidak ditemukan</Text>
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView
       style={{flex: 1}}
@@ -707,7 +510,6 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
           contentContainerStyle={{paddingBottom: 40}}>
           <View style={styles.container}>
             <Text style={styles.title}>Edit Data Mentoring</Text>
-
             {/* Header */}
             <View style={styles.card}>
               <TouchableOpacity
@@ -720,7 +522,6 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
                 />
                 <Text style={styles.sectionTitle}>Header</Text>
               </TouchableOpacity>
-
               {expanded && (
                 <View style={styles.sectionContent}>
                   <View style={styles.row}>
@@ -735,19 +536,16 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
                       </Text>
                     </View>
                   </View>
-
                   <View style={{padding: 1}}>
                     <Text style={{fontSize: 16, marginBottom: 8}}>
                       Operator
                     </Text>
-
                     <TextInput
                       placeholder="Cari Operator JDE"
                       value={operatorQuery}
                       onChangeText={searchOperator}
                       style={[styles.value, {paddingVertical: 10}]}
                     />
-
                     {/* Search Results */}
                     {showResults && searchResults.length > 0 && (
                       <View style={[styles.indicatorDetail, {maxHeight: 150}]}>
@@ -761,11 +559,10 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
                               <Text>{`${item.employeeId} - ${item.EmployeeName}`}</Text>
                             </TouchableOpacity>
                           )}
-                          nestedScrollEnabled={true} // supaya scrollable di dalam header
+                          nestedScrollEnabled={true}
                         />
                       </View>
                     )}
-
                     <View style={styles.operatorBox}>
                       <Text style={{fontSize: 16, marginBottom: 8}}>
                         Operator JDE: {operatorJDE}
@@ -782,18 +579,22 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
                       </Text>
                     </View>
                   </View>
-
                   <Text style={styles.label}>Site</Text>
-                  <RNPickerSelect
-                    onValueChange={value => {
-                      setSelectedSite(value);
-                      updateSite(value);
-                    }}
-                    items={siteList}
-                    value={selectedSite}
-                    placeholder={{label: 'Pilih Site', value: null}}
-                    style={pickerSelectStyles}
-                    useNativeAndroidPickerStyle={false}
+                  <TextInput
+                    value={site || ''}
+                    editable={false}
+                    style={styles.input}
+                  />
+                  <Text style={styles.label}>Area</Text>
+                  <TextInput
+                    value={area ?? ''}
+                    onChangeText={setArea}
+                    placeholder="Masukkan nama Area"
+                    style={[
+                      styles.input,
+                      {minHeight: 40, textAlignVertical: 'top'},
+                    ]}
+                    multiline
                   />
                 </View>
               )}
@@ -815,7 +616,6 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
                   )}
                 />
               </View>
-
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Unit Model</Text>
                 <RNPickerSelect
@@ -830,7 +630,6 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
                   )}
                 />
               </View>
-
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Unit Number</Text>
                 <RNPickerSelect
@@ -845,7 +644,6 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
                   )}
                 />
               </View>
-
               <View style={styles.timeDateGroup}>
                 <View style={styles.timeDateInput}>
                   <Text style={styles.label}>Tanggal</Text>
@@ -866,7 +664,6 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
                     />
                   )}
                 </View>
-
                 <View style={styles.timeDateInput}>
                   <Text style={styles.label}>Waktu Mulai</Text>
                   <TouchableOpacity
@@ -889,7 +686,6 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
                     />
                   )}
                 </View>
-
                 <View style={styles.timeDateInput}>
                   <Text style={styles.label}>Waktu Selesai</Text>
                   <TouchableOpacity
@@ -933,7 +729,6 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
                       color="#6b7280"
                     />
                   </TouchableOpacity>
-
                   {visibleCategories[kategori] && (
                     <>
                       {list.map(ind => {
@@ -945,13 +740,11 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
                           note_observasi: '',
                           fid_indicator: ind.id,
                         };
-
                         return (
                           <View key={ind.id} style={styles.indicatorItem}>
                             <Text style={styles.indicatorParam}>
                               • {ind.param1}
                             </Text>
-
                             <View style={styles.indicatorDetail}>
                               <View style={styles.detailRow}>
                                 <Text style={styles.detailLabel}>
@@ -965,44 +758,39 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
                                       'is_observasi',
                                     )
                                   }
+                                  tintColors={{true: '#111', false: '#111'}}
+                                  boxType="square"
+                                  style={{width: 20, height: 20}}
                                 />
                               </View>
-
                               <View style={styles.detailRow}>
                                 <Text style={styles.detailLabel}>
                                   Mentoring:
                                 </Text>
-                                <CheckBox
-                                  value={detail.is_mentoring === '1'}
-                                  onValueChange={() =>
-                                    toggleCheckbox(
-                                      detail.fid_indicator,
-                                      'is_mentoring',
-                                    )
-                                  }
-                                />
+                                <View style={styles.checkBoxWrapper}>
+                                  <CheckBox
+                                    value={detail.is_mentoring === '1'}
+                                    onValueChange={() =>
+                                      toggleCheckbox(
+                                        detail.fid_indicator,
+                                        'is_mentoring',
+                                      )
+                                    }
+                                    tintColors={{true: '#111', false: '#111'}}
+                                    boxType="square"
+                                    style={{width: 20, height: 20}}
+                                  />
+                                </View>
                               </View>
-
                               <View style={styles.detailRow}>
                                 <Text style={styles.detailLabel}>Catatan:</Text>
                                 <TextInput
-                                  style={[
-                                    styles.detailValue,
-                                    {
-                                      borderWidth: 1,
-                                      borderColor: '#ccc',
-                                      padding: 5,
-                                      borderRadius: 5,
-                                      flex: 1,
-                                      minHeight: 40,
-                                    },
-                                  ]}
+                                  style={styles.detailValue}
                                   multiline
                                   placeholder="Masukkan catatan..."
                                   value={detail.note_observasi || ''}
-                                  onChangeText={
-                                    text =>
-                                      updateNote(detail.fid_indicator, text) // update parent state
+                                  onChangeText={text =>
+                                    updateNote(detail.fid_indicator, text)
                                   }
                                 />
                               </View>
@@ -1010,7 +798,6 @@ const EditDataMentoring = ({route}: {route: {params: {id: string}}}) => {
                           </View>
                         );
                       })}
-
                       {/* Skor per kategori */}
                       <View style={styles.categoryScore}>
                         <Text style={styles.scoreText}>

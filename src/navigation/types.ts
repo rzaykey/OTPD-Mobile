@@ -3,9 +3,11 @@ export interface MentoringData {
   id: number;
   trainer_name: string;
   operator_name: string;
+  class_name: string;
   site: string;
   area: string;
   unit_number: string;
+  unit_type: string;
   date_mentoring: string;
   start_time: string;
   end_time: string;

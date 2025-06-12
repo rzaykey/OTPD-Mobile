@@ -142,6 +142,11 @@ export const editDataStyles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     color: '#1f2937',
+    borderWidth: 1,
+    borderColor: '#ccc',
+    padding: 5,
+    borderRadius: 5,
+    minHeight: 40,
   },
   pointsGrid: {
     flexDirection: 'row',
@@ -259,6 +264,7 @@ export const editDataStyles = StyleSheet.create({
     borderColor: '#ccc',
     padding: 10,
     borderRadius: 8,
+    color: '#000',
   },
   pickerSelectAndroid: {
     height: 48, // atau coba 50
@@ -276,3 +282,22 @@ export const editDataStyles = StyleSheet.create({
     lineHeight: 24, // pastikan cukup besar
   },
 });
+export const operatorDropdownBox = {
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  zIndex: 10,
+  backgroundColor: '#fff',
+  borderWidth: 1,
+  borderColor: '#111',
+  borderRadius: 7,
+  maxHeight: 170,
+  top: 65, // bisa diatur sesuai jarak input search
+};
+export const checkBoxWrapper = {
+  borderWidth: 1,
+  borderColor: '#111',
+  borderRadius: 4,
+  padding: 1,
+  marginRight: 6,
+};

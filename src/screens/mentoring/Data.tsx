@@ -47,6 +47,7 @@ export default function Data() {
       const res = await fetch(`${API_BASE_URL}/mentoring-data`);
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json.data || [];
+      console.log(arr);
       setData(arr);
     } catch (err) {
       console.error('Fetch error:', err);
@@ -78,7 +79,7 @@ export default function Data() {
   const handleEdit = (item: MentoringData) => {
     Alert.alert(
       'Edit Data',
-      `Apakah Anda ingin mengedit data untuk ${item.trainer_name}?`,
+      `Apakah Anda ingin mengedit data untuk ${item.operator_name}?`,
       [
         {text: 'Batal', style: 'cancel'},
         {
@@ -229,11 +230,9 @@ export default function Data() {
                         color="#1E90FF"
                         style={{marginRight: 5}}
                       />
-                      <Text style={styles.cardTitle}>{item.trainer_name}</Text>
+                      <Text style={styles.cardTitle}>{item.operator_name}</Text>
                     </View>
-                    <Text style={styles.cardSubtitle}>
-                      {item.operator_name}
-                    </Text>
+                    <Text style={styles.cardSubtitle}>{item.trainer_name}</Text>
                   </View>
                   <View style={{alignItems: 'flex-end'}}>
                     <Text style={styles.cardSite}>{item.site}</Text>
@@ -251,7 +250,7 @@ export default function Data() {
                 <View style={styles.cardDetail}>
                   <Text style={styles.cardDetailText}>Area: {item.area}</Text>
                   <Text style={styles.cardDetailText}>
-                    Unit: {item.unit_number}
+                    Unit Class: {item.class_name}
                   </Text>
                   <Text style={styles.cardDetailText}>
                     Date: {item.date_mentoring.split(' ')[0]}

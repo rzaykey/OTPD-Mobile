@@ -24,6 +24,7 @@ export const tambahMentoringStyles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     marginBottom: 12,
+    color: #000,
   },
   button: {
     backgroundColor: '#1E90FF',
