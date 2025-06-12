@@ -21,6 +21,7 @@ export interface DailyActivity {
   site: string;
   date_activity: string; // format: "YYYY-MM-DD HH:mm:ss"
   kpi_type: string;
+  kpi_name: string;
   activity_name: string;
   activity: string;
   unit_model: string;

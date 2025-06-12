@@ -20,19 +20,19 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import {useNavigation} from '@react-navigation/native';
 import API_BASE_URL from '../../config';
 
+// Enable LayoutAnimation for Android (untuk efek expand/collapse di Android)
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+// Komponen Card Collapsible
 const CollapsibleCard = ({title, children}) => {
   const [expanded, setExpanded] = useState(true);
-
   const toggleExpand = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpanded(!expanded);
   };
-
   return (
     <View style={addDailyAct.card}>
       <TouchableOpacity onPress={toggleExpand} style={addDailyAct.cardHeader}>
@@ -45,6 +45,10 @@ const CollapsibleCard = ({title, children}) => {
 
 const AddDailyActivity = () => {
   const navigation = useNavigation();
+
+  // === STATE DEFINISI ===
+
+  // Data form input user
   const [formData, setFormData] = useState({
     jde_no: '',
     employee_name: '',
@@ -56,15 +60,25 @@ const AddDailyActivity = () => {
     total_participant: '',
     total_hour: '',
   });
+
+  // Menyimpan role user (misal Full/Regular)
   const [role, setRole] = useState('');
+  // Pilihan dropdown KPI
   const [kpiOptions, setKpiOptions] = useState([]);
+  // Pilihan dropdown activity
   const [activityOptions, setActivityOptions] = useState([]);
+  // Pilihan dropdown unit
   const [unitOptions, setUnitOptions] = useState([]);
+  // State open dropdown unit
   const [unitOpen, setUnitOpen] = useState(false);
+  // State selected unit value (untuk DropDownPicker)
   const [unitValue, setUnitValue] = useState(null);
+  // State untuk show date picker
   const [showDatePicker, setShowDatePicker] = useState(false);
+  // State tanggal yang dipilih
   const [selectedDate, setSelectedDate] = useState(new Date());
 
+  // --- Ambil session user (token, role, site)
   const getSession = async () => {
     const token = await AsyncStorage.getItem('userToken');
     const role = await AsyncStorage.getItem('userRole');
@@ -74,21 +88,24 @@ const AddDailyActivity = () => {
     return {token, role, site};
   };
 
+  // === FETCH DATA PERTAMA (KPI, User, Unit, dst) ===
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
+        // Ambil info sesi login (token, role, site)
         const {token, role, site} = await getSession();
         const userString = await AsyncStorage.getItem('userData');
         const user = userString ? JSON.parse(userString) : null;
 
-        if (!token || !role || !site || !user) {
+        if (!role || !site || !user) {
           Alert.alert(
             'Error',
-            'Token, site, atau role tidak ditemukan. Silakan login ulang.',
+            'Site, atau role tidak ditemukan. Silakan login ulang.',
           );
           return;
         }
 
+        // Set ke state
         setRole(role);
         setFormData(prev => ({
           ...prev,
@@ -97,42 +114,25 @@ const AddDailyActivity = () => {
           site: site,
         }));
 
-        const kpiResp = await axios.get(`${API_BASE_URL}/getKPI`, {
-          headers: {Authorization: `Bearer ${token}`},
-          params: {role},
-        });
-
-        const kpiData = kpiResp.data.map(kpi => ({
+        // 1. Ambil data KPI untuk dropdown
+        const kpiResp = await axios.get(`${API_BASE_URL}/getKPI`);
+        const kpiData = (kpiResp.data?.data || []).map(kpi => ({
           label: kpi.kpi,
-          value: kpi.kpi,
+          value: kpi.id,
         }));
         setKpiOptions(kpiData);
 
+        // 2. Jika ada KPI, ambil activity untuk KPI pertama
         if (kpiData.length > 0) {
-          const selectedKpi = kpiData[0].value;
-          setFormData(prev => ({...prev, kpi_type: selectedKpi}));
-
-          const activityResp = await axios.get(`${API_BASE_URL}/getActivity`, {
-            headers: {Authorization: `Bearer ${token}`},
-            params: {
-              kpi: selectedKpi,
-              role,
-              site,
-            },
-          });
-
-          const actData = activityResp.data.map(act => ({
-            label: act.activity,
-            value: act.activity,
-          }));
-          setActivityOptions(actData);
+          const selectedKpiId = kpiData[0].value;
+          setFormData(prev => ({...prev, kpi_type: selectedKpiId}));
+          fetchActivityByKpi(selectedKpiId, role, site);
         }
 
+        // 3. Ambil data unit + employee dari endpoint createDailyAct
         const dayActResp = await axios.get(
           `${API_BASE_URL}/dayActivities/createDailyAct`,
-          {
-            headers: {Authorization: `Bearer ${token}`},
-          },
+          {headers: {Authorization: `Bearer ${token}`}},
         );
 
         if (dayActResp.data.success) {
@@ -143,6 +143,7 @@ const AddDailyActivity = () => {
           }));
           setUnitOptions(unitData);
 
+          // Isi ulang nama/jde dari response (jika ada)
           const emp = dayActResp.data.data.employee;
           setFormData(prev => ({
             ...prev,
@@ -164,31 +165,35 @@ const AddDailyActivity = () => {
     fetchInitialData();
   }, []);
 
-  const onKpiChange = async selectedKpi => {
-    setFormData(prev => ({...prev, kpi_type: selectedKpi, activity: ''}));
+  // --- Ambil activity sesuai KPI yang dipilih
+  const fetchActivityByKpi = async (kpiId, role, site) => {
     try {
-      const {token, role, site} = await getSession();
-      if (!token || !role || !site) return;
-
       const activityResp = await axios.get(`${API_BASE_URL}/getActivity`, {
-        headers: {Authorization: `Bearer ${token}`},
-        params: {kpi: selectedKpi, role, site},
+        params: {kpi: kpiId, role, site},
       });
-
-      const actData = activityResp.data.map(act => ({
+      const actData = (activityResp.data?.data || []).map(act => ({
         label: act.activity,
         value: act.id,
       }));
       setActivityOptions(actData);
-    } catch (error) {
+    } catch (err) {
       Alert.alert('Error', 'Gagal mengambil data activity');
     }
   };
 
+  // --- Handler ganti KPI (refresh activity)
+  const onKpiChange = async selectedKpiId => {
+    setFormData(prev => ({...prev, kpi_type: selectedKpiId, activity: ''}));
+    const {role, site} = await getSession();
+    fetchActivityByKpi(selectedKpiId, role, site);
+  };
+
+  // --- Handler form change (universal)
   const handleChange = (name, value) => {
     setFormData(prev => ({...prev, [name]: value}));
   };
 
+  // --- Date picker handler
   const handleDateChange = (_event, selected) => {
     const currentDate = selected || selectedDate;
     setShowDatePicker(Platform.OS === 'ios');
@@ -197,6 +202,7 @@ const AddDailyActivity = () => {
     handleChange('date_activity', formatted);
   };
 
+  // --- Handler submit (save)
   const handleSubmit = async () => {
     const requiredFields = [
       'jde_no',
@@ -241,6 +247,7 @@ const AddDailyActivity = () => {
           'Sukses',
           response.data.message || 'Data berhasil disimpan',
         );
+        // Reset sebagian field setelah submit
         setFormData(prev => ({
           ...prev,
           date_activity: '',
@@ -267,6 +274,7 @@ const AddDailyActivity = () => {
     }
   };
 
+  // === RENDER UI ===
   return (
     <View style={{flex: 1}}>
       <KeyboardAwareScrollView
@@ -275,6 +283,7 @@ const AddDailyActivity = () => {
         extraScrollHeight={120}>
         <Text style={addDailyAct.header}>INPUT DAILY ACTIVITY</Text>
 
+        {/* User Info Card */}
         <CollapsibleCard title="User Info">
           <Text style={addDailyAct.label}>JDE No</Text>
           <TextInput
@@ -298,6 +307,7 @@ const AddDailyActivity = () => {
           />
         </CollapsibleCard>
 
+        {/* Activity Info Card */}
         <CollapsibleCard title="Activity Info">
           <Text style={addDailyAct.label}>Date Activity</Text>
           <TouchableOpacity onPress={() => setShowDatePicker(true)}>
@@ -343,6 +353,7 @@ const AddDailyActivity = () => {
           />
         </CollapsibleCard>
 
+        {/* Unit Info Card */}
         <CollapsibleCard title="Unit Info">
           <Text style={addDailyAct.label}>Detail Unit</Text>
           <DropDownPicker
@@ -368,6 +379,7 @@ const AddDailyActivity = () => {
           />
         </CollapsibleCard>
 
+        {/* Participant Info Card */}
         <CollapsibleCard title="Participant Info">
           <Text style={addDailyAct.label}>Total Participant</Text>
           <TextInput
@@ -386,6 +398,7 @@ const AddDailyActivity = () => {
           />
         </CollapsibleCard>
 
+        {/* Tombol Simpan */}
         <Button title="Simpan" onPress={handleSubmit} />
       </KeyboardAwareScrollView>
     </View>

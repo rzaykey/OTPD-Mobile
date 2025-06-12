@@ -103,10 +103,10 @@ export const addDailyAct = StyleSheet.create({
     fontWeight: '600',
   },
   pickerSelectAndroid: {
-    height: 48, // atau coba 50
-    minHeight: 48, // tambahan jaga-jaga
-    paddingHorizontal: 16,
-    paddingVertical: 12, // tambahkan supaya teks tidak kepotong
+    height: 70, // atau coba 50
+    minHeight: 44, // tambahan jaga-jaga
+    paddingHorizontal: 1,
+    paddingVertical: 1, // tambahkan supaya teks tidak kepotong
     borderWidth: 1,
     borderColor: '#ccc',
     borderRadius: 8,
@@ -116,6 +116,8 @@ export const addDailyAct = StyleSheet.create({
     textAlignVertical: 'center', // ini penting di Android
     backgroundColor: '#fff',
     lineHeight: 24, // pastikan cukup besar
+    width: '100%',
+    flex: 1,
   },
   pickerSelectIOS: {
     height: 48,
