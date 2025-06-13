@@ -23,21 +23,25 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Animatable from 'react-native-animatable';
 import Icon from 'react-native-vector-icons/Ionicons';
 import API_BASE_URL from '../../config';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
-// Enable layout animation khusus Android
+// Aktifkan animasi layout di Android
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// Pilihan jumlah item per halaman
+// Opsi jumlah data per halaman
 const pageSizeOptions = [5, 10, 50, 100];
 
-// Type untuk navigasi stack
+// Tipe navigasi stack
 type NavigationProp = StackNavigationProp<RootStackParamList, 'TrainHours'>;
 
 const TrainHoursScreen: React.FC = () => {
-  // State hooks
+  // Safe area untuk padding bawah (biar tidak kepotong nav gesture bar)
+  const insets = useSafeAreaInsets();
+
+  // State
   const navigation = useNavigation<NavigationProp>();
   const [data, setData] = useState<TrainHoursType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,19 +51,16 @@ const TrainHoursScreen: React.FC = () => {
   const [pageSize, setPageSize] = useState(10);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Ambil data dari API trainHours
+  // Fetch data API trainHours
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch(`${API_BASE_URL}/trainHours`);
       const json = await res.json();
-      console.log('RAW fetch json:', json);
-
-      // Handle respons agar selalu array
+      // Pastikan data array (bukan null/object/error)
       const arr = Array.isArray(json.data) ? json.data : [];
       setData(arr);
     } catch (err) {
-      console.error('Fetch error:', err);
       setData([]);
     } finally {
       setLoading(false);
@@ -67,30 +68,30 @@ const TrainHoursScreen: React.FC = () => {
     }
   }, []);
 
-  // Ambil data pertama kali saat komponen mount
+  // Fetch pertama kali saat mount
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  // Fetch data setiap screen focus
+  // Fetch setiap screen di-focus
   useFocusEffect(
     useCallback(() => {
       fetchData();
     }, [fetchData]),
   );
 
-  // Handle refresh swipe-down
+  // Pull-to-refresh
   const onRefresh = () => {
     setRefreshing(true);
     fetchData();
   };
 
-  // Expand/collapse detail data card
+  // Expand/collapse card
   const toggleExpand = (id: number) => {
     setExpandedId(prev => (prev === id ? null : id));
   };
 
-  // Filter data berdasarkan pencarian
+  // Filter data by search
   const filteredData = data.filter(item => {
     const q = searchQuery.toLowerCase();
     return (
@@ -101,26 +102,26 @@ const TrainHoursScreen: React.FC = () => {
     );
   });
 
-  // Pagination logika
+  // Pagination logic
   const totalPages = Math.ceil(filteredData.length / pageSize);
   const paginatedData = filteredData.slice(
     (page - 1) * pageSize,
     page * pageSize,
   );
 
-  // Reset page jika search atau pageSize berubah
+  // Reset page ke 1 jika search atau pageSize berubah
   useEffect(() => {
     if (totalPages > 0 && page > totalPages) {
       setPage(1);
     }
   }, [searchQuery, pageSize, totalPages, page]);
 
-  // Tutup expand card jika search/page berubah
+  // Close expand card saat ganti search/page
   useEffect(() => {
     setExpandedId(null);
   }, [searchQuery, page, pageSize]);
 
-  // Tampilkan loading spinner jika masih loading dan bukan saat refreshing
+  // Spinner loading awal
   if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.center}>
@@ -129,7 +130,7 @@ const TrainHoursScreen: React.FC = () => {
     );
   }
 
-  // Navigasi ke halaman EditTrainHours
+  // Navigasi ke edit
   const handleEdit = (item: TrainHoursType) => {
     Alert.alert(
       'Edit Train Hours',
@@ -147,23 +148,31 @@ const TrainHoursScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={{flex: 1, paddingHorizontal: 8, paddingTop: 20}}>
-      {/* Judul halaman */}
+    <SafeAreaView
+      style={[
+        {
+          flex: 1,
+          paddingHorizontal: 8,
+          paddingTop: 20,
+          paddingBottom: insets.bottom,
+        },
+      ]}>
+      {/* Judul */}
       <Text style={styles.pageTitle}>Train Hours</Text>
 
-      {/* Search input */}
+      {/* Search */}
       <TextInput
         placeholder="Cari Nama, Position, Site..."
         value={searchQuery}
         onChangeText={text => {
           setSearchQuery(text);
-          setPage(1); // Reset ke halaman 1 setelah search
+          setPage(1);
         }}
         style={styles.searchInput}
         {...(Platform.OS === 'ios' ? {clearButtonMode: 'while-editing'} : {})}
       />
 
-      {/* Picker untuk memilih jumlah data per halaman */}
+      {/* Picker jumlah item per halaman */}
       <View style={styles.pickerContainer}>
         <Text style={styles.pickerLabel}>Items per page:</Text>
         <View style={styles.pickerWrapper}>
@@ -171,7 +180,7 @@ const TrainHoursScreen: React.FC = () => {
             selectedValue={pageSize}
             onValueChange={itemValue => {
               setPageSize(itemValue);
-              setPage(1); // Reset ke halaman 1 setelah ganti pageSize
+              setPage(1);
             }}
             style={styles.picker}
             dropdownIconColor="#1E90FF"
@@ -183,7 +192,7 @@ const TrainHoursScreen: React.FC = () => {
         </View>
       </View>
 
-      {/* List data */}
+      {/* List data utama */}
       <FlatList
         data={paginatedData}
         keyExtractor={item => item.id.toString()}
@@ -228,7 +237,7 @@ const TrainHoursScreen: React.FC = () => {
                 </View>
               </TouchableOpacity>
 
-              {/* Detail card, tampil jika expanded */}
+              {/* Detail card */}
               {expanded && (
                 <View style={styles.cardDetail}>
                   <Text style={styles.cardDetailText}>
@@ -255,7 +264,7 @@ const TrainHoursScreen: React.FC = () => {
                       : 0}
                     %
                   </Text>
-                  {/* Tombol edit */}
+                  {/* Tombol Edit */}
                   <View style={styles.cardActionRow}>
                     <TouchableOpacity
                       style={styles.editButton}
@@ -280,7 +289,7 @@ const TrainHoursScreen: React.FC = () => {
         contentContainerStyle={{paddingBottom: 22}}
       />
 
-      {/* Pagination navigasi */}
+      {/* Navigasi halaman (pagination) */}
       <View style={styles.paginationContainer}>
         <TouchableOpacity
           onPress={() => setPage(p => Math.max(1, p - 1))}

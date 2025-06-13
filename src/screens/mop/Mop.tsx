@@ -16,23 +16,32 @@ import {tabelStyles as styles} from '../../styles/tabelStyles';
 import {useNavigation, useFocusEffect} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
 import {RootStackParamList} from '../../navigation/types';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {MopData} from '../../navigation/types';
 import * as Animatable from 'react-native-animatable';
 import Icon from 'react-native-vector-icons/Ionicons';
 import API_BASE_URL from '../../config';
+import {useSafeAreaInsets} from 'react-native-safe-area-context'; // untuk safe area bawah
 
+// Pilihan jumlah item per halaman
 const pageSizeOptions = [5, 10, 50, 100];
 
+// Aktifkan layout animation khusus Android
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+// Tipe navigasi
 type NavigationProp = StackNavigationProp<RootStackParamList, 'Mop'>;
 
+/**
+ * Halaman Mine Operator Performance (MOP)
+ */
 export default function Mop() {
   const navigation = useNavigation<NavigationProp>();
+  const insets = useSafeAreaInsets(); // Untuk padding bawah agar tidak kepotong gesture nav
+
+  // State utama
   const [data, setData] = useState<MopData[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -41,11 +50,15 @@ export default function Mop() {
   const [pageSize, setPageSize] = useState(10);
   const [searchQuery, setSearchQuery] = useState('');
 
+  /**
+   * Fetch data dari API
+   */
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch(`${API_BASE_URL}/mopData`);
       const json = await res.json();
+      // Backend bisa mengembalikan array langsung atau {data:[]}
       const arr = Array.isArray(json) ? json : json.data || [];
       setData(arr);
     } catch (err) {
@@ -56,25 +69,30 @@ export default function Mop() {
     }
   }, []);
 
+  // Fetch pertama
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
+  // Fetch ulang tiap focus
   useFocusEffect(
     useCallback(() => {
       fetchData();
     }, [fetchData]),
   );
 
+  // Pull to refresh
   const onRefresh = () => {
     setRefreshing(true);
     fetchData();
   };
 
+  // Expand/collapse card
   const toggleExpand = (id: number) => {
     setExpandedId(prev => (prev === id ? null : id));
   };
 
+  // Filter berdasarkan search
   const filteredData = data.filter(item => {
     const q = searchQuery.toLowerCase();
     return (
@@ -84,23 +102,26 @@ export default function Mop() {
     );
   });
 
+  // Pagination logika
   const totalPages = Math.ceil(filteredData.length / pageSize);
   const paginatedData = filteredData.slice(
     (page - 1) * pageSize,
     page * pageSize,
   );
 
+  // Reset page ke 1 jika search atau pageSize berubah
   useEffect(() => {
     if (totalPages > 0 && page > totalPages) {
       setPage(1);
     }
   }, [searchQuery, pageSize, totalPages, page]);
 
-  // Agar collapse reset saat filter/page berubah
+  // Reset expanded jika filter/page berubah
   useEffect(() => {
     setExpandedId(null);
   }, [searchQuery, page, pageSize]);
 
+  // Loader awal
   if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.center}>
@@ -110,9 +131,17 @@ export default function Mop() {
   }
 
   return (
-    <SafeAreaView style={{flex: 1, paddingHorizontal: 8, paddingTop: 20}}>
+    <SafeAreaView
+      style={{
+        flex: 1,
+        paddingHorizontal: 8,
+        paddingTop: 20,
+        paddingBottom: insets.bottom,
+      }}>
+      {/* Judul halaman */}
       <Text style={styles.pageTitle}>Mine Operator Performance</Text>
 
+      {/* Kolom pencarian */}
       <TextInput
         placeholder="Cari Nama, JDE, atau Site..."
         value={searchQuery}
@@ -124,6 +153,7 @@ export default function Mop() {
         {...(Platform.OS === 'ios' ? {clearButtonMode: 'while-editing'} : {})}
       />
 
+      {/* Pilih items per page */}
       <View style={styles.pickerContainer}>
         <Text style={styles.pickerLabel}>Items per page:</Text>
         <View style={styles.pickerWrapper}>
@@ -143,12 +173,13 @@ export default function Mop() {
         </View>
       </View>
 
+      {/* Daftar data MOP */}
       <FlatList
         data={paginatedData}
         keyExtractor={item => item.id.toString()}
         renderItem={({item, index}) => {
           const expanded = item.id === expandedId;
-          const globalIndex = (page - 1) * pageSize + index + 1;
+          // const globalIndex = (page - 1) * pageSize + index + 1;
           return (
             <Animatable.View
               animation={expanded ? 'fadeInDown' : 'fadeInUp'}
@@ -158,6 +189,7 @@ export default function Mop() {
                 expanded && styles.cardExpanded,
                 {marginBottom: 14, borderRadius: 14, overflow: 'hidden'},
               ]}>
+              {/* Header card */}
               <TouchableOpacity
                 onPress={() => toggleExpand(item.id)}
                 style={{paddingBottom: expanded ? 0 : 8}}
@@ -200,6 +232,7 @@ export default function Mop() {
                 </View>
               </TouchableOpacity>
 
+              {/* Detail card */}
               {expanded && (
                 <View
                   style={[
@@ -308,6 +341,7 @@ export default function Mop() {
         contentContainerStyle={{paddingBottom: 22}}
       />
 
+      {/* Pagination navigasi */}
       <View style={styles.paginationContainer}>
         <TouchableOpacity
           onPress={() => setPage(p => Math.max(1, p - 1))}

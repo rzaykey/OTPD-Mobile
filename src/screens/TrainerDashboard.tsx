@@ -16,12 +16,13 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import * as Animatable from 'react-native-animatable';
 import {dashboardStyles as styles} from '../styles/dashboardStyles';
 import API_BASE_URL from '../config';
+// Tambahkan jika ingin safe area bottom padding
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 if (!(global as any)._IS_NEW_ARCHITECTURE_ENABLED) {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
-// Enable LayoutAnimation (Android only)
 
 type Props = NativeStackScreenProps<RootStackParamList, 'FullDashboard'>;
 
@@ -36,26 +37,10 @@ const categories = [
         label: 'Tambah Mentoring',
         icon: 'add-circle-outline',
         subsubmenu: [
-          {
-            label: 'Form Digger',
-            icon: 'cog',
-            screen: 'AddDataMentoring',
-          },
-          {
-            label: 'Form Hauler',
-            icon: 'cog',
-            screen: 'AddDataMentoring',
-          },
-          {
-            label: 'Form Bulldozer',
-            icon: 'cog',
-            screen: 'AddDataMentoring',
-          },
-          {
-            label: 'Form Grader',
-            icon: 'cog',
-            screen: 'AddDataMentoring',
-          },
+          {label: 'Form Digger', icon: 'cog', screen: 'AddDataMentoring'},
+          {label: 'Form Hauler', icon: 'cog', screen: 'AddDataMentoring'},
+          {label: 'Form Bulldozer', icon: 'cog', screen: 'AddDataMentoring'},
+          {label: 'Form Grader', icon: 'cog', screen: 'AddDataMentoring'},
         ],
       },
     ],
@@ -93,37 +78,47 @@ const categories = [
   },
 ];
 
+// 1. Tambahkan defaultSummary agar field summary selalu tampil (tidak pernah hilang)
+const defaultSummary = {
+  mentoringToday: 0,
+  dailyToday: 0,
+  trainHoursToday: 0,
+  unitTotal: 0,
+  typeTotal: 0,
+  modelTotal: 0,
+  classTotal: 0,
+  siteTotal: 0,
+};
+
 const TrainerDashboard = ({navigation}: Props) => {
+  // [opsional] Untuk bottom safe area
+  const insets = useSafeAreaInsets();
+
   const [user, setUser] = useState<any>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState('1');
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
 
-  const [summary, setSummary] = useState({
-    mentoringToday: 0,
-    dailyToday: 0,
-    trainHoursToday: 0,
-    unitTotal: 0,
-    typeTotal: 0,
-    modelTotal: 0,
-    classTotal: 0,
-    siteTotal: 0,
-    // jika mau: mentoringAll, dsb
-  });
+  // 2. Gunakan defaultSummary sebagai state awal
+  const [summary, setSummary] = useState(defaultSummary);
   const [loadingSummary, setLoadingSummary] = useState(true);
 
   useEffect(() => {
     fetchSummary();
   }, []);
 
+  // 3. Perbaiki setSummary agar field tidak pernah hilang
   const fetchSummary = async () => {
     try {
       setLoadingSummary(true);
       const res = await fetch(`${API_BASE_URL}/dashboard`);
       const json = await res.json();
-      setSummary(json.data); // json.data: { mentoringToday, dailyToday, trainHoursToday }
+      setSummary(
+        json.data && typeof json.data === 'object'
+          ? {...defaultSummary, ...json.data}
+          : defaultSummary,
+      );
     } catch (err) {
-      // handle error (alert, dsb)
-      setSummary({mentoringToday: 0, dailyToday: 0, trainHoursToday: 0});
+      setSummary(defaultSummary);
     } finally {
       setLoadingSummary(false);
     }
@@ -143,13 +138,10 @@ const TrainerDashboard = ({navigation}: Props) => {
     navigation.replace('Login');
   };
 
-  // Category (bottom menu) press
   const handleCategoryPress = (categoryId: string) => {
     setSelectedCategoryId(prev => (prev === categoryId ? null : categoryId));
     setActiveSubmenu(null);
   };
-
-  // Submenu press
   const handleSubmenuPress = (item: any) => {
     if (item.subsubmenu) {
       setActiveSubmenu(prev => (prev === item.label ? null : item.label));
@@ -158,23 +150,18 @@ const TrainerDashboard = ({navigation}: Props) => {
       navigation.navigate(item.screen);
     }
   };
-
-  // Subsubmenu press
   const handleSubsubmenuPress = (item: any) => {
     if (item.screen === 'AddDataMentoring') {
-      // Pass unitType for AddDataMentoring
       const unitType = item.label.replace('Form ', '').toUpperCase();
       navigation.navigate(item.screen, {data: {unitType}});
     } else {
       navigation.navigate(item.screen);
     }
   };
-
   const selectedCategory = categories.find(
     cat => cat.id === selectedCategoryId,
   );
 
-  // Render Subsubmenu as Grid
   const renderSubsubmenu = (items: any[]) => (
     <Animatable.View animation="fadeInUp" duration={400} style={{marginTop: 6}}>
       <View
@@ -187,11 +174,8 @@ const TrainerDashboard = ({navigation}: Props) => {
         }}>
         {items.map((item, idx) => (
           <TouchableOpacity
-            key={item.id ? item.id : `${item.label}-${idx}`} // <-- lebih aman
-            style={[
-              styles.subGridCard,
-              {width: '47%'}, // 2 kolom responsif
-            ]}
+            key={item.id ? item.id : `${item.label}-${idx}`}
+            style={[styles.subGridCard, {width: '47%'}]}
             activeOpacity={0.8}
             onPress={() => handleSubsubmenuPress(item)}>
             <Icon name={item.icon} size={34} color="#1E90FF" />
@@ -203,8 +187,12 @@ const TrainerDashboard = ({navigation}: Props) => {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={[styles.scroll, {paddingBottom: 90}]}>
+    <SafeAreaView style={[styles.container, {paddingBottom: insets.bottom}]}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          {paddingBottom: Math.max(insets.bottom, 90)},
+        ]}>
         {/* HEADER */}
         <View style={{alignItems: 'center', marginTop: 16, marginBottom: 2}}>
           <Image
@@ -222,7 +210,7 @@ const TrainerDashboard = ({navigation}: Props) => {
           style={styles.headerCard}>
           <Text style={styles.headerText}>
             <Icon name="person-circle-outline" size={22} color="#fff" /> Selamat
-            datang, {user.role}!
+            datang, {user?.role}!
           </Text>
           <TouchableOpacity
             onPress={handleLogout}
@@ -383,7 +371,7 @@ const TrainerDashboard = ({navigation}: Props) => {
               horizontal
               keyExtractor={(item, idx) =>
                 item.id ? String(item.id) : `${item.label}-${idx}`
-              } // <-- aman
+              }
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{
                 paddingHorizontal: 8,
@@ -429,7 +417,11 @@ const TrainerDashboard = ({navigation}: Props) => {
       </ScrollView>
 
       {/* BOTTOM BAR */}
-      <View style={styles.bottomMenuBar}>
+      <View
+        style={[
+          styles.bottomMenuBar,
+          {paddingBottom: insets.bottom > 0 ? insets.bottom : 10},
+        ]}>
         {categories.map(category => (
           <TouchableOpacity
             key={category.id}

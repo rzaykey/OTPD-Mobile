@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   LayoutAnimation,
   UIManager,
+  ActivityIndicator,
 } from 'react-native';
 import RNPickerSelect from 'react-native-picker-select';
 import axios from 'axios';
@@ -19,14 +20,16 @@ import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import {useNavigation} from '@react-navigation/native';
 import API_BASE_URL from '../../config';
+import {useMutation, useQueryClient} from '@tanstack/react-query';
+import NetInfo from '@react-native-community/netinfo';
 
-// Enable LayoutAnimation for Android (untuk efek expand/collapse di Android)
+// ====== Android LayoutAnimation Enable ======
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// Komponen Card Collapsible
+// ====== Collapsible Card (Section) ======
 const CollapsibleCard = ({title, children}) => {
   const [expanded, setExpanded] = useState(true);
   const toggleExpand = () => {
@@ -43,12 +46,37 @@ const CollapsibleCard = ({title, children}) => {
   );
 };
 
+// ====== Offline-First Mutation ======
+const useOfflineAddActivity = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({formData, token}) => {
+      const response = await axios.post(
+        `${API_BASE_URL}/dayActivities`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['daily-activity-list']);
+    },
+  });
+};
+
+/**
+ * Halaman Tambah Daily Activity (OFFLINE, filter client-side KPI+site)
+ */
 const AddDailyActivity = () => {
   const navigation = useNavigation();
 
-  // === STATE DEFINISI ===
-
-  // Data form input user
+  // ====== State ======
   const [formData, setFormData] = useState({
     jde_no: '',
     employee_name: '',
@@ -61,51 +89,47 @@ const AddDailyActivity = () => {
     total_hour: '',
   });
 
-  // Menyimpan role user (misal Full/Regular)
   const [role, setRole] = useState('');
-  // Pilihan dropdown KPI
   const [kpiOptions, setKpiOptions] = useState([]);
-  // Pilihan dropdown activity
   const [activityOptions, setActivityOptions] = useState([]);
-  // Pilihan dropdown unit
   const [unitOptions, setUnitOptions] = useState([]);
-  // State open dropdown unit
   const [unitOpen, setUnitOpen] = useState(false);
-  // State selected unit value (untuk DropDownPicker)
   const [unitValue, setUnitValue] = useState(null);
-  // State untuk show date picker
   const [showDatePicker, setShowDatePicker] = useState(false);
-  // State tanggal yang dipilih
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [isConnected, setIsConnected] = useState(true);
 
-  // --- Ambil session user (token, role, site)
+  // ====== Session Helper ======
   const getSession = async () => {
     const token = await AsyncStorage.getItem('userToken');
     const role = await AsyncStorage.getItem('userRole');
     const userString = await AsyncStorage.getItem('userData');
     const user = userString ? JSON.parse(userString) : null;
     const site = user?.site || '';
-    return {token, role, site};
+    return {token, role, site, user};
   };
 
-  // === FETCH DATA PERTAMA (KPI, User, Unit, dst) ===
+  // ====== NetInfo for online status ======
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsConnected(state.isConnected === true);
+    });
+    NetInfo.fetch().then(state => setIsConnected(state.isConnected === true));
+    return () => unsubscribe();
+  }, []);
+
+  // ====== Fetch all master data at once & cache ======
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        // Ambil info sesi login (token, role, site)
-        const {token, role, site} = await getSession();
-        const userString = await AsyncStorage.getItem('userData');
-        const user = userString ? JSON.parse(userString) : null;
-
+        const {token, role, site, user} = await getSession();
         if (!role || !site || !user) {
           Alert.alert(
             'Error',
-            'Site, atau role tidak ditemukan. Silakan login ulang.',
+            'Site atau role tidak ditemukan. Silakan login ulang.',
           );
           return;
         }
-
-        // Set ke state
         setRole(role);
         setFormData(prev => ({
           ...prev,
@@ -114,95 +138,169 @@ const AddDailyActivity = () => {
           site: site,
         }));
 
-        // 1. Ambil data KPI untuk dropdown
-        const kpiResp = await axios.get(`${API_BASE_URL}/getKPI`);
-        const kpiData = (kpiResp.data?.data || []).map(kpi => ({
-          label: kpi.kpi,
-          value: kpi.id,
-        }));
-        setKpiOptions(kpiData);
+        // ==== KPI List with CACHE ====
+        let kpiData = [];
+        try {
+          const kpiResp = await axios.get(`${API_BASE_URL}/getKPI`);
+          kpiData = (kpiResp.data?.data || []).map(kpi => ({
+            label: kpi.kpi,
+            value: String(kpi.id), // Penting, selalu String untuk filter!
+          }));
+          setKpiOptions(kpiData);
+          await AsyncStorage.setItem('dropdown_kpi', JSON.stringify(kpiData));
+        } catch {
+          const cache = await AsyncStorage.getItem('dropdown_kpi');
+          if (cache) {
+            kpiData = JSON.parse(cache);
+            setKpiOptions(kpiData);
+            Alert.alert('Offline', 'Pilihan KPI diambil dari cache lokal.');
+          } else {
+            setKpiOptions([]);
+            Alert.alert(
+              'Offline',
+              'Tidak ada data KPI tersimpan di perangkat.',
+            );
+          }
+        }
 
-        // 2. Jika ada KPI, ambil activity untuk KPI pertama
+        // ==== ALL Activity with CACHE ====
+        let allAct = [];
+        try {
+          const activityResp = await axios.get(
+            `${API_BASE_URL}/getActivity/all`,
+          );
+          allAct = activityResp.data?.data || [];
+          await AsyncStorage.setItem(
+            'dropdown_activity_all',
+            JSON.stringify(allAct),
+          );
+        } catch {
+          const cache = await AsyncStorage.getItem('dropdown_activity_all');
+          if (cache) {
+            allAct = JSON.parse(cache);
+            Alert.alert(
+              'Offline',
+              'Pilihan Activity diambil dari cache lokal.',
+            );
+          } else {
+            allAct = [];
+            Alert.alert('Offline', 'Tidak ada data Activity di perangkat.');
+          }
+        }
+
+        // ==== Unit List with CACHE ====
+        let unitData = [];
+        try {
+          const dayActResp = await axios.get(
+            `${API_BASE_URL}/dayActivities/createDailyAct`,
+            {headers: {Authorization: `Bearer ${token}`}},
+          );
+          if (dayActResp.data.success) {
+            unitData = (dayActResp.data.data.unit || []).map((item, index) => ({
+              label: item.model,
+              value: `${item.id}_${index}`,
+              modelOnly: item.id,
+            }));
+            setUnitOptions(unitData);
+            await AsyncStorage.setItem(
+              'dropdown_unit',
+              JSON.stringify(unitData),
+            );
+            // Override name/JDE from response
+            const emp = dayActResp.data.data.employee;
+            setFormData(prev => ({
+              ...prev,
+              jde_no: emp.EmployeeId || prev.jde_no,
+              employee_name: emp.EmployeeName || prev.employee_name,
+            }));
+          } else {
+            Alert.alert(
+              'Error',
+              dayActResp.data.message || 'Gagal mengambil data unit & employee',
+            );
+          }
+        } catch {
+          const cache = await AsyncStorage.getItem('dropdown_unit');
+          if (cache) {
+            unitData = JSON.parse(cache);
+            setUnitOptions(unitData);
+            Alert.alert('Offline', 'Pilihan Unit diambil dari cache lokal.');
+          } else {
+            setUnitOptions([]);
+            Alert.alert(
+              'Offline',
+              'Tidak ada data Unit tersimpan di perangkat.',
+            );
+          }
+        }
+
+        // Prefill activity for first KPI
         if (kpiData.length > 0) {
           const selectedKpiId = kpiData[0].value;
           setFormData(prev => ({...prev, kpi_type: selectedKpiId}));
-          fetchActivityByKpi(selectedKpiId, role, site);
-        }
-
-        // 3. Ambil data unit + employee dari endpoint createDailyAct
-        const dayActResp = await axios.get(
-          `${API_BASE_URL}/dayActivities/createDailyAct`,
-          {headers: {Authorization: `Bearer ${token}`}},
-        );
-
-        if (dayActResp.data.success) {
-          const unitData = dayActResp.data.data.unit.map((item, index) => ({
-            label: item.model,
-            value: `${item.id}_${index}`,
-            modelOnly: item.id,
-          }));
-          setUnitOptions(unitData);
-
-          // Isi ulang nama/jde dari response (jika ada)
-          const emp = dayActResp.data.data.employee;
-          setFormData(prev => ({
-            ...prev,
-            jde_no: emp.EmployeeId || prev.jde_no,
-            employee_name: emp.EmployeeName || prev.employee_name,
-          }));
-        } else {
-          Alert.alert(
-            'Error',
-            dayActResp.data.message || 'Gagal mengambil data unit & employee',
-          );
+          filterActivityByKpi(selectedKpiId, allAct, site);
         }
       } catch (error) {
-        console.error('Error fetch initial data:', error);
         Alert.alert('Error', 'Terjadi kesalahan saat mengambil data awal');
       }
     };
-
     fetchInitialData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- Ambil activity sesuai KPI yang dipilih
-  const fetchActivityByKpi = async (kpiId, role, site) => {
-    try {
-      const activityResp = await axios.get(`${API_BASE_URL}/getActivity`, {
-        params: {kpi: kpiId, role, site},
-      });
-      const actData = (activityResp.data?.data || []).map(act => ({
+  // ====== Filter activity by selected KPI & site (client side only) ======
+  const filterActivityByKpi = async (kpiId, allActParam = null, site = '') => {
+    let allAct = allActParam;
+    if (!allAct) {
+      const cache = await AsyncStorage.getItem('dropdown_activity_all');
+      allAct = cache ? JSON.parse(cache) : [];
+    }
+    let filterSite = site;
+    if (!filterSite) {
+      const session = await getSession();
+      filterSite = session.site;
+    }
+    const filtered = allAct
+      .filter(
+        act =>
+          String(act.kpi) === String(kpiId) &&
+          (!filterSite ||
+            String(act.site).toLowerCase() ===
+              String(filterSite).toLowerCase()),
+      )
+      .map(act => ({
         label: act.activity,
         value: act.id,
       }));
-      setActivityOptions(actData);
-    } catch (err) {
-      Alert.alert('Error', 'Gagal mengambil data activity');
-    }
+    setActivityOptions(filtered);
+    // DEBUG LOG:
+    console.log('[DEBUG] filterActivityByKpi:', {kpiId, filterSite, filtered});
   };
 
-  // --- Handler ganti KPI (refresh activity)
+  // ====== Handler ganti KPI (dropdown) ======
   const onKpiChange = async selectedKpiId => {
     setFormData(prev => ({...prev, kpi_type: selectedKpiId, activity: ''}));
-    const {role, site} = await getSession();
-    fetchActivityByKpi(selectedKpiId, role, site);
+    const session = await getSession();
+    filterActivityByKpi(selectedKpiId, null, session.site);
   };
 
-  // --- Handler form change (universal)
+  // ====== Universal input handler ======
   const handleChange = (name, value) => {
     setFormData(prev => ({...prev, [name]: value}));
   };
 
-  // --- Date picker handler
+  // ====== Date picker handler ======
   const handleDateChange = (_event, selected) => {
     const currentDate = selected || selectedDate;
     setShowDatePicker(Platform.OS === 'ios');
     setSelectedDate(currentDate);
-    const formatted = currentDate.toISOString().split('T')[0];
-    handleChange('date_activity', formatted);
+    handleChange('date_activity', currentDate.toISOString().split('T')[0]);
   };
 
-  // --- Handler submit (save)
+  // ====== React Query Mutation ======
+  const addActivityMutation = useOfflineAddActivity();
+
+  // ====== Submit handler ======
   const handleSubmit = async () => {
     const requiredFields = [
       'jde_no',
@@ -215,7 +313,6 @@ const AddDailyActivity = () => {
       'total_participant',
       'total_hour',
     ];
-
     for (const field of requiredFields) {
       if (!formData[field]) {
         Alert.alert('Validasi Gagal', `Field "${field}" wajib diisi.`);
@@ -223,58 +320,84 @@ const AddDailyActivity = () => {
       }
     }
 
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      if (!token) {
-        Alert.alert('Error', 'Token tidak ditemukan. Silakan login ulang.');
-        return;
+    const token = await AsyncStorage.getItem('userToken');
+    if (!token) {
+      Alert.alert('Error', 'Token tidak ditemukan. Silakan login ulang.');
+      return;
+    }
+
+    NetInfo.fetch().then(state => {
+      if (!state.isConnected) {
+        Alert.alert(
+          'Offline',
+          'Data akan otomatis disimpan offline dan dikirim ke server saat jaringan tersedia!',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Reset field setelah submit dan langsung redirect!
+                setFormData(prev => ({
+                  ...prev,
+                  date_activity: '',
+                  kpi_type: '',
+                  activity: '',
+                  unit_detail: '',
+                  total_participant: '',
+                  total_hour: '',
+                }));
+                setUnitValue(null);
+                navigation.navigate('DailyActivity');
+              },
+            },
+          ],
+        );
+        // Tetap panggil mutation agar masuk ke offline queue!
+        addActivityMutation.mutate({formData, token});
+        return; // stop eksekusi berikutnya (biar tidak double navigasi)
       }
 
-      const response = await axios.post(
-        `${API_BASE_URL}/dayActivities`,
-        formData,
+      addActivityMutation.mutate(
+        {formData, token},
         {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
+          onSuccess: data => {
+            if (data.success) {
+              Alert.alert('Sukses', data.message || 'Data berhasil disimpan');
+              setFormData(prev => ({
+                ...prev,
+                date_activity: '',
+                kpi_type: '',
+                activity: '',
+                unit_detail: '',
+                total_participant: '',
+                total_hour: '',
+              }));
+              setUnitValue(null);
+              navigation.navigate('DailyActivity');
+            } else {
+              Alert.alert('Gagal', data.message || 'Gagal menyimpan data');
+            }
+          },
+          onError: error => {
+            if (error.response?.data?.errors) {
+              const messages = Object.values(error.response.data.errors)
+                .flat()
+                .join('\n');
+              Alert.alert('Validasi Gagal', messages);
+            } else {
+              Alert.alert('Error', 'Terjadi kesalahan saat menyimpan data');
+            }
           },
         },
       );
-
-      if (response.data.success) {
-        Alert.alert(
-          'Sukses',
-          response.data.message || 'Data berhasil disimpan',
-        );
-        // Reset sebagian field setelah submit
-        setFormData(prev => ({
-          ...prev,
-          date_activity: '',
-          kpi_type: '',
-          activity: '',
-          unit_detail: '',
-          total_participant: '',
-          total_hour: '',
-        }));
-        setUnitValue(null);
-        navigation.navigate('DailyActivity');
-      } else {
-        Alert.alert('Gagal', response.data.message || 'Gagal menyimpan data');
-      }
-    } catch (error) {
-      if (error.response?.data?.errors) {
-        const messages = Object.values(error.response.data.errors)
-          .flat()
-          .join('\n');
-        Alert.alert('Validasi Gagal', messages);
-      } else {
-        Alert.alert('Error', 'Terjadi kesalahan saat menyimpan data');
-      }
-    }
+    });
   };
 
-  // === RENDER UI ===
+  // DEBUG LOG: lihat apa isi activityOptions
+  useEffect(() => {
+    console.log('[DEBUG] activityOptions:', activityOptions);
+  }, [activityOptions]);
+
+  // ====== UI Render ======
   return (
     <View style={{flex: 1}}>
       <KeyboardAwareScrollView
@@ -398,8 +521,26 @@ const AddDailyActivity = () => {
           />
         </CollapsibleCard>
 
-        {/* Tombol Simpan */}
-        <Button title="Simpan" onPress={handleSubmit} />
+        {/* Submit Button */}
+        <Button
+          title={addActivityMutation.isLoading ? 'Menyimpan...' : 'Simpan'}
+          onPress={handleSubmit}
+          disabled={addActivityMutation.isLoading}
+        />
+
+        {/* Indikator status sinkronisasi */}
+        <View style={{marginTop: 12, alignItems: 'center'}}>
+          {!isConnected ? (
+            <Text style={{color: '#a94442'}}>
+              📡 Offline: Data akan dikirim otomatis saat online.
+            </Text>
+          ) : addActivityMutation.isLoading ? (
+            <View style={{flexDirection: 'row', alignItems: 'center'}}>
+              <ActivityIndicator size="small" color="#555" />
+              <Text style={{marginLeft: 8}}>Sinkronisasi...</Text>
+            </View>
+          ) : null}
+        </View>
       </KeyboardAwareScrollView>
     </View>
   );

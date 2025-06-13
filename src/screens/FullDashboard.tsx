@@ -8,6 +8,8 @@ import {
   FlatList,
   Image,
   UIManager,
+  Alert,
+  ToastAndroid,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
@@ -17,13 +19,14 @@ import * as Animatable from 'react-native-animatable';
 import {dashboardStyles as styles} from '../styles/dashboardStyles';
 import dayjs from 'dayjs';
 import API_BASE_URL from '../config';
-import {Alert, ToastAndroid} from 'react-native';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import NetInfo from '@react-native-community/netinfo';
+import {useQueryClient} from '@tanstack/react-query';
 
 if (!(global as any)._IS_NEW_ARCHITECTURE_ENABLED) {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
-// Enable LayoutAnimation (Android only)
 
 type Props = NativeStackScreenProps<RootStackParamList, 'FullDashboard'>;
 
@@ -38,26 +41,10 @@ const categories = [
         label: 'Tambah Mentoring',
         icon: 'add-circle-outline',
         subsubmenu: [
-          {
-            label: 'Form Digger',
-            icon: 'cog',
-            screen: 'AddDataMentoring',
-          },
-          {
-            label: 'Form Hauler',
-            icon: 'cog',
-            screen: 'AddDataMentoring',
-          },
-          {
-            label: 'Form Bulldozer',
-            icon: 'cog',
-            screen: 'AddDataMentoring',
-          },
-          {
-            label: 'Form Grader',
-            icon: 'cog',
-            screen: 'AddDataMentoring',
-          },
+          {label: 'Form Digger', icon: 'cog', screen: 'AddDataMentoring'},
+          {label: 'Form Hauler', icon: 'cog', screen: 'AddDataMentoring'},
+          {label: 'Form Bulldozer', icon: 'cog', screen: 'AddDataMentoring'},
+          {label: 'Form Grader', icon: 'cog', screen: 'AddDataMentoring'},
         ],
       },
     ],
@@ -111,24 +98,27 @@ const categories = [
   },
 ];
 
+const defaultSummary = {
+  mentoringToday: 0,
+  dailyToday: 0,
+  trainHoursToday: 0,
+  unitTotal: 0,
+  typeTotal: 0,
+  modelTotal: 0,
+  classTotal: 0,
+  siteTotal: 0,
+};
+
 const FullDashboard = ({navigation}: Props) => {
+  const insets = useSafeAreaInsets();
+
   const [user, setUser] = useState<any>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState('1');
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
   const [dateTime, setDateTime] = useState(new Date());
-
-  const [summary, setSummary] = useState({
-    mentoringToday: 0,
-    dailyToday: 0,
-    trainHoursToday: 0,
-    unitTotal: 0,
-    typeTotal: 0,
-    modelTotal: 0,
-    classTotal: 0,
-    siteTotal: 0,
-    // jika mau: mentoringAll, dsb
-  });
+  const [summary, setSummary] = useState(defaultSummary);
   const [loadingSummary, setLoadingSummary] = useState(true);
+  const [isConnected, setIsConnected] = useState(true);
 
   useEffect(() => {
     fetchSummary();
@@ -139,11 +129,14 @@ const FullDashboard = ({navigation}: Props) => {
       setLoadingSummary(true);
       const res = await fetch(`${API_BASE_URL}/dashboard`);
       const json = await res.json();
-      console.log(API_BASE_URL);
-      setSummary(json.data); // json.data: { mentoringToday, dailyToday, trainHoursToday }
+      // Merge supaya field yang tidak ada tetap ada (0)
+      setSummary(
+        json.data && typeof json.data === 'object'
+          ? {...defaultSummary, ...json.data}
+          : defaultSummary,
+      );
     } catch (err) {
-      // handle error (alert, dsb)
-      setSummary({mentoringToday: 0, dailyToday: 0, trainHoursToday: 0});
+      setSummary(defaultSummary);
     } finally {
       setLoadingSummary(false);
     }
@@ -157,13 +150,10 @@ const FullDashboard = ({navigation}: Props) => {
     fetchUser();
   }, []);
 
-  // Category (bottom menu) press
   const handleCategoryPress = (categoryId: string) => {
     setSelectedCategoryId(prev => (prev === categoryId ? null : categoryId));
     setActiveSubmenu(null);
   };
-
-  // Submenu press
   const handleSubmenuPress = (item: any) => {
     if (item.subsubmenu) {
       setActiveSubmenu(prev => (prev === item.label ? null : item.label));
@@ -172,18 +162,14 @@ const FullDashboard = ({navigation}: Props) => {
       navigation.navigate(item.screen);
     }
   };
-
   const unitTypeMapping: {[key: string]: number} = {
     DIGGER: 3,
     BULLDOZER: 2,
     GRADER: 5,
     HAULER: 4,
   };
-
-  // Subsubmenu press
   const handleSubsubmenuPress = (item: any) => {
     if (item.screen === 'AddDataMentoring') {
-      // Pass unitType for AddDataMentoring
       const unitType = item.label.replace('Form ', '').toUpperCase();
       const unitTypeId = unitTypeMapping[unitType];
       navigation.navigate(item.screen, {data: {unitType, unitTypeId}});
@@ -191,34 +177,22 @@ const FullDashboard = ({navigation}: Props) => {
       navigation.navigate(item.screen);
     }
   };
-
   const selectedCategory = categories.find(
     cat => cat.id === selectedCategoryId,
   );
-
-  //logout
   const handleLogout = () => {
-    // Konfirmasi dulu
     Alert.alert(
       'Konfirmasi Logout',
       'Yakin ingin logout?',
       [
-        {
-          text: 'Batal',
-          style: 'cancel',
-        },
+        {text: 'Batal', style: 'cancel'},
         {
           text: 'Ya',
           onPress: async () => {
-            // Proses logout
             await AsyncStorage.removeItem('userToken');
             await AsyncStorage.removeItem('userData');
             await AsyncStorage.removeItem('userRole');
-
-            // Toast Android (atau Toast library)
             ToastAndroid.show('Logout berhasil!', ToastAndroid.SHORT);
-
-            // Alert sukses (opsional, karena sudah ada toast)
             Alert.alert('Logout', 'Anda berhasil logout!', [
               {
                 text: 'OK',
@@ -232,12 +206,10 @@ const FullDashboard = ({navigation}: Props) => {
       {cancelable: true},
     );
   };
-
   useEffect(() => {
     const interval = setInterval(() => setDateTime(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
-  // Render Subsubmenu as Grid
   const renderSubsubmenu = (items: any[]) => (
     <Animatable.View animation="fadeInUp" duration={400} style={{marginTop: 6}}>
       <View
@@ -250,11 +222,8 @@ const FullDashboard = ({navigation}: Props) => {
         }}>
         {items.map((item, idx) => (
           <TouchableOpacity
-            key={item.id ? item.id : `${item.label}-${idx}`} // <-- lebih aman
-            style={[
-              styles.subGridCard,
-              {width: '47%'}, // 2 kolom responsif
-            ]}
+            key={item.id ? item.id : `${item.label}-${idx}`}
+            style={[styles.subGridCard, {width: '47%'}]}
             activeOpacity={0.8}
             onPress={() => handleSubsubmenuPress(item)}>
             <Icon name={item.icon} size={34} color="#1E90FF" />
@@ -264,10 +233,38 @@ const FullDashboard = ({navigation}: Props) => {
       </View>
     </Animatable.View>
   );
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsConnected(state.isConnected === true);
+    });
+    NetInfo.fetch().then(state => setIsConnected(state.isConnected === true));
+    return () => unsubscribe();
+  }, []);
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    let shown = false;
+    const unsubscribe = NetInfo.addEventListener(async state => {
+      if (state.isConnected) {
+        // cek mutation React Query yang tertunda
+        const mutations = queryClient.getMutationCache().getAll();
+        const hasPaused = mutations.some(m => m.state.status === 'paused');
+        if (hasPaused && !shown) {
+          shown = true;
+          Alert.alert('Info', 'Sedang mengirim data yang tersimpan offline...');
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [queryClient]);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={[styles.scroll, {paddingBottom: 90}]}>
+    <SafeAreaView style={[styles.container, {paddingBottom: insets.bottom}]}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          {paddingBottom: Math.max(insets.bottom, 100)},
+        ]}>
         {/* HEADER */}
         <View
           style={{
@@ -286,9 +283,19 @@ const FullDashboard = ({navigation}: Props) => {
               resizeMode: 'contain',
             }}
           />
-          <Text style={{fontSize: 14, color: '#555', fontWeight: '500'}}>
-            {dayjs(dateTime).format('dddd, DD MMMM YYYY HH:mm:ss')}
-          </Text>
+          {/* Status jaringan + jam */}
+          <View style={styles.statusContainer}>
+            <Text
+              style={[
+                styles.statusIndicator,
+                isConnected ? styles.statusOnline : styles.statusOffline,
+              ]}>
+              {isConnected ? '🟢 Online' : '🔴 Offline'}
+            </Text>
+            <Text style={styles.statusTime}>
+              {dayjs(dateTime).format('dddd, DD MMMM YYYY HH:mm:ss')}
+            </Text>
+          </View>
         </View>
         <Animatable.View
           animation="fadeInDown"
@@ -318,6 +325,7 @@ const FullDashboard = ({navigation}: Props) => {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{paddingLeft: 14, paddingBottom: 6}}>
+          {/* Summary Cards */}
           <Animatable.View
             animation="fadeInUp"
             duration={600}
@@ -457,7 +465,7 @@ const FullDashboard = ({navigation}: Props) => {
               horizontal
               keyExtractor={(item, idx) =>
                 item.id ? String(item.id) : `${item.label}-${idx}`
-              } // <-- aman
+              }
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{
                 paddingHorizontal: 8,
@@ -503,7 +511,11 @@ const FullDashboard = ({navigation}: Props) => {
       </ScrollView>
 
       {/* BOTTOM BAR */}
-      <View style={styles.bottomMenuBar}>
+      <View
+        style={[
+          styles.bottomMenuBar,
+          {paddingBottom: insets.bottom > 0 ? insets.bottom : 10},
+        ]}>
         {categories.map(category => (
           <TouchableOpacity
             key={category.id}

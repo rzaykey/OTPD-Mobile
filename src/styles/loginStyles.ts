@@ -79,4 +79,23 @@ export const loginStyles = StyleSheet.create({
     marginBottom: 4,
     marginLeft: 6,
   },
+  statusWrapper: {
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  statusLabel: {
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  statusOnline: {
+    backgroundColor: '#d4edda',
+    color: '#155724',
+  },
+  statusOffline: {
+    backgroundColor: '#f8d7da',
+    color: '#721c24',
+  },
 });

@@ -18,8 +18,9 @@ import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import {useNavigation} from '@react-navigation/native';
 import API_BASE_URL from '../../config';
+import {useSafeAreaInsets} from 'react-native-safe-area-context'; // Untuk safe area bawah
 
-// Enable layout animation khusus Android
+// Aktifkan layout animation khusus Android
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -49,6 +50,7 @@ const CollapsibleCard = ({title, children}) => {
  */
 const AddTrainHours = () => {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets(); // Mendapatkan safe area (untuk padding bawah)
 
   // State utama form
   const [formData, setFormData] = useState({
@@ -151,7 +153,7 @@ const AddTrainHours = () => {
           // Data Unit Type (class)
           const typeUnitArr = (response.data.data.typeUnit || []).map(item => ({
             label: item.class,
-            value: item.id, // value id
+            value: item.id,
           }));
           setUnitTypeOptions(typeUnitArr);
 
@@ -161,7 +163,7 @@ const AddTrainHours = () => {
               label: item.model,
               value: item.id,
               type: item.type,
-              class: item.class, // class = id typeUnit
+              class: item.class,
             }),
           );
           setClassUnitArr(classUnitArr);
@@ -189,7 +191,6 @@ const AddTrainHours = () => {
           );
         }
       } catch (error) {
-        console.error('Error fetch initial data:', error);
         Alert.alert('Error', 'Terjadi kesalahan saat ambil data awal');
       }
     };
@@ -329,6 +330,7 @@ const AddTrainHours = () => {
           'Sukses',
           response.data.message || 'Data berhasil disimpan',
         );
+        // Reset form (optional, sesuai kebutuhan)
         setFormData({
           jde_no: '',
           employee_name: '',
@@ -364,7 +366,7 @@ const AddTrainHours = () => {
 
   // ------------------- RENDER FORM -------------------
   return (
-    <View style={{flex: 1}}>
+    <View style={{flex: 1, paddingBottom: insets.bottom}}>
       <KeyboardAwareScrollView
         contentContainerStyle={addDailyAct.container}
         keyboardShouldPersistTaps="handled"
@@ -554,6 +556,7 @@ const AddTrainHours = () => {
           )}
         </CollapsibleCard>
 
+        {/* Tombol Simpan */}
         <Button title="Simpan" onPress={handleSubmit} />
       </KeyboardAwareScrollView>
     </View>

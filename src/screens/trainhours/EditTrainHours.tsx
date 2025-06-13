@@ -18,15 +18,16 @@ import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import API_BASE_URL from '../../config';
+import {useSafeAreaInsets} from 'react-native-safe-area-context'; // Untuk safe area bawah
 
-// Enable layout animation pada Android
+// Aktifkan animasi layout di Android
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 /**
- * Komponen kartu collapsible untuk grouping form section
+ * Komponen kartu collapsible, untuk grouping section form
  */
 const CollapsibleCard = ({title, children}) => {
   const [expanded, setExpanded] = useState(true);
@@ -51,6 +52,9 @@ const EditTrainHours = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const {id} = route.params;
+
+  // Untuk safe area bawah
+  const insets = useSafeAreaInsets();
 
   // STATE: data form utama
   const [formData, setFormData] = useState({
@@ -128,18 +132,18 @@ const EditTrainHours = () => {
           Alert.alert('Error', 'Session habis. Silakan login ulang.');
           return;
         }
-        // 1. Ambil master data
+        // Ambil master data
         const master = await axios.get(`${API_BASE_URL}/trainHours/create`, {
           headers: {Authorization: `Bearer ${token}`},
         });
-        // 2. Ambil data detail yang mau diedit
+        // Ambil data detail
         const detail = await axios.get(`${API_BASE_URL}/trainHours/${id}`, {
           headers: {Authorization: `Bearer ${token}`},
         });
 
         if (cancel) return;
 
-        // Mapping data master
+        // Mapping dropdown options
         const typeUnitArr = (master.data.data.typeUnit || []).map(item => ({
           label: item.class,
           value: String(item.id),
@@ -167,7 +171,7 @@ const EditTrainHours = () => {
         }));
         setTrainingTypeOptions(kpiArr);
 
-        // SET default data edit (detail)
+        // Set data edit
         if (detail.data.status) {
           const d = detail.data.data;
           // Cari value training_type berdasar ID
@@ -211,7 +215,6 @@ const EditTrainHours = () => {
           Alert.alert('Error', detail.data.message || 'Gagal ambil data.');
         }
       } catch (error) {
-        console.error('Error fetch initial data:', error);
         Alert.alert('Error', 'Terjadi kesalahan saat ambil data awal');
       }
     };
@@ -221,9 +224,7 @@ const EditTrainHours = () => {
     };
   }, [id]);
 
-  /**
-   * Sync cascading dropdown: classUnit sesuai unit_type
-   */
+  // Sync cascading dropdown: classUnit sesuai unit_type
   useEffect(() => {
     if (formData.unit_type && classUnitArr.length > 0) {
       setFilteredClassUnitOptions(
@@ -234,9 +235,7 @@ const EditTrainHours = () => {
     }
   }, [formData.unit_type, classUnitArr]);
 
-  /**
-   * Sync cascading dropdown: code sesuai unit_class
-   */
+  // Sync cascading dropdown: code sesuai unit_class
   useEffect(() => {
     if (formData.unit_class && allCodeUnitArr.length > 0) {
       setCodeOptions(
@@ -247,16 +246,12 @@ const EditTrainHours = () => {
     }
   }, [formData.unit_class, allCodeUnitArr]);
 
-  /**
-   * Handle perubahan nilai field
-   */
+  // Handle perubahan field
   const handleChange = (name, value) => {
     setFormData(prev => ({...prev, [name]: value}));
   };
 
-  /**
-   * Handle perubahan tanggal dari DateTimePicker
-   */
+  // Handle tanggal DateTimePicker
   const handleDateChange = (_event, selected) => {
     const currentDate = selected || selectedDate;
     setShowDatePicker(Platform.OS === 'ios');
@@ -265,9 +260,7 @@ const EditTrainHours = () => {
     handleChange('date_activity', formatted);
   };
 
-  /**
-   * Hitung otomatis total_hm & progres saat hm_start/hm_end berubah
-   */
+  // Hitung otomatis total_hm & progres saat hm_start/hm_end berubah
   useEffect(() => {
     const start = Number(formData.hm_start) || 0;
     const end = Number(formData.hm_end) || 0;
@@ -279,9 +272,7 @@ const EditTrainHours = () => {
     }));
   }, [formData.hm_start, formData.hm_end, formData.plan_total_hm]);
 
-  /**
-   * Handler cascading dropdown (UnitType, UnitClass)
-   */
+  // Handler cascading dropdown
   const onChangeUnitType = val => {
     handleChange('unit_type', val);
     handleChange('unit_class', '');
@@ -292,23 +283,19 @@ const EditTrainHours = () => {
     handleChange('code', '');
   };
 
-  /**
-   * Handler untuk dropdown KPI/training_type
-   */
+  // Handler dropdown KPI/training_type
   const onChangeTrainingType = val => {
     setTrainingTypeValue(val);
     handleChange('training_type', val);
   };
 
-  /**
-   * Validasi dan submit update data ke backend
-   */
+  // Validasi dan submit update ke backend
   const handleSubmit = async () => {
     const requiredFields = [
       'jde_no',
       'employee_name',
       'position',
-      'training_type', // WAJIB: id KPI
+      'training_type', // wajib id KPI
       'unit_class',
       'unit_type',
       'code',
@@ -336,7 +323,6 @@ const EditTrainHours = () => {
         Alert.alert('Error', 'Token tidak ditemukan. Silakan login ulang.');
         return;
       }
-      console.log('Training type yang dikirim:', formData.training_type);
 
       const response = await axios.put(
         `${API_BASE_URL}/trainHours/${id}`,
@@ -370,9 +356,9 @@ const EditTrainHours = () => {
     }
   };
 
-  // --- RENDER ---
+  // --- UI ---
   return (
-    <View style={{flex: 1}}>
+    <View style={{flex: 1, paddingBottom: insets.bottom}}>
       <KeyboardAwareScrollView
         contentContainerStyle={addDailyAct.container}
         keyboardShouldPersistTaps="handled"
@@ -571,6 +557,7 @@ const EditTrainHours = () => {
           )}
         </CollapsibleCard>
 
+        {/* Tombol submit update */}
         <Button title="Update" onPress={handleSubmit} />
       </KeyboardAwareScrollView>
     </View>

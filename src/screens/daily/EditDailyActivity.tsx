@@ -1,3 +1,4 @@
+// EditDailyActivity.tsx
 import React, {useEffect, useState} from 'react';
 import {
   Text,
@@ -9,6 +10,8 @@ import {
   TouchableOpacity,
   LayoutAnimation,
   UIManager,
+  ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import RNPickerSelect from 'react-native-picker-select';
 import axios from 'axios';
@@ -18,15 +21,16 @@ import DropDownPicker from 'react-native-dropdown-picker';
 import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import {useNavigation} from '@react-navigation/native';
+import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
 import API_BASE_URL from '../../config';
+import NetInfo from '@react-native-community/netinfo';
 
-// Enable LayoutAnimation for Android
+// Aktifkan LayoutAnimation Android
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// Komponen collapsible untuk setiap card section
 const CollapsibleCard = ({title, children}) => {
   const [expanded, setExpanded] = useState(true);
   const toggleExpand = () => {
@@ -43,157 +47,162 @@ const CollapsibleCard = ({title, children}) => {
   );
 };
 
-const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
-  // ======== NAVIGATION & PARAMETER ========
+/**
+ * EditDailyActivity (Optimized)
+ * - Offline/online edit, dropdown cache, tombol save aman di safe area
+ * - Tidak tarik master berulang! Hanya cache, kecuali user force refresh di halaman list.
+ * - Data detail prioritas dari server jika online, cache jika offline
+ */
+const EditDailyActivity = ({route}) => {
   const {id} = route.params;
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
 
-  // ======== STATE DEFINITIONS (DOKUMENTASI LENGKAP) ========
-  // Menyimpan seluruh field form daily activity
+  // State
   const [formData, setFormData] = useState({
-    jde_no: '', // Nomor JDE (readonly, dari user)
-    employee_name: '', // Nama employee (readonly, dari user)
-    site: '', // Site (readonly, dari user)
-    date_activity: '', // Tanggal aktivitas (format yyyy-mm-dd)
-    kpi_type: '', // ID KPI terpilih
-    activity: '', // ID Activity (bukan nama)
-    unit_detail: '', // Detail Unit (ID)
-    total_participant: '', // Jumlah peserta (string/number)
-    total_hour: '', // Total jam (string/number)
+    jde_no: '',
+    employee_name: '',
+    site: '',
+    date_activity: '',
+    kpi_type: '',
+    activity: '',
+    unit_detail: '',
+    total_participant: '',
+    total_hour: '',
   });
-
-  // Role user saat ini (readonly)
-  const [role, setRole] = useState('');
-
-  // List opsi KPI, format: [{label, value}]
   const [kpiOptions, setKpiOptions] = useState([]);
-
-  // List opsi activity, format: [{label, value}]
   const [activityOptions, setActivityOptions] = useState([]);
-
-  // List opsi unit (DropDownPicker), format: [{label, value, modelOnly}]
   const [unitOptions, setUnitOptions] = useState([]);
-
-  // State kontrol untuk DropDownPicker unit
   const [unitOpen, setUnitOpen] = useState(false);
   const [unitValue, setUnitValue] = useState(null);
-
-  // Kontrol datepicker
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [loading, setLoading] = useState(true);
+  const [isConnected, setIsConnected] = useState(true);
 
-  // Simpan data header (raw API) untuk keperluan lanjut
-  const [headerData, setHeaderData] = useState<any[]>([]);
-
-  // Loading state (show/hide spinner)
-  const [loading, setLoading] = useState(false);
-
-  // ======== FUNCTION: SESSION HELPER ========
-  const getSession = async () => {
-    // Mengambil session token, role, user, site dari storage
-    const token = await AsyncStorage.getItem('userToken');
-    const role = await AsyncStorage.getItem('userRole');
-    const userString = await AsyncStorage.getItem('userData');
-    const user = userString ? JSON.parse(userString) : null;
-    const site = user?.site || '';
-    return {token, role, site};
-  };
-
-  // ======== FETCH DATA DETAIL AKTIVITAS UNTUK EDIT (by id) ========
+  // Online/offline
   useEffect(() => {
-    setLoading(true);
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(`${API_BASE_URL}/dayActivities/${id}/edit`);
-        const rawData = res.data?.data;
-        if (!rawData) {
-          alert('Data tidak ditemukan');
-          return;
-        }
-        setHeaderData(rawData);
-        // Set semua field form sesuai data dari API
-        setFormData(prev => ({
-          ...prev,
-          jde_no: rawData.jde_no || '',
-          employee_name: rawData.employee_name || '',
-          site: rawData.site || '',
-          date_activity: rawData.date_activity || '',
-          kpi_type: rawData.kpi_type || '',
-          kpi_name: rawData.kpi_name || '',
-          activity: rawData.activity || '',
-          unit_detail: rawData.unit_detail || '',
-          total_participant: String(rawData.total_participant || ''),
-          total_hour: String(rawData.total_hour || ''),
-        }));
-        setUnitValue(rawData.unit_detail || '');
-        if (rawData.date_activity)
-          setSelectedDate(new Date(rawData.date_activity));
-      } catch (error) {
-        console.error('Fetch data error:', error);
-        alert('Gagal mengambil data');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [id]);
-
-  // ======== FETCH INFO USER DAN SET KE FORM ========
-  useEffect(() => {
-    const fetchInitialData = async () => {
-      try {
-        const {token, role, site} = await getSession();
-        const userString = await AsyncStorage.getItem('userData');
-        const user = userString ? JSON.parse(userString) : null;
-        if (!token || !role || !site || !user) {
-          Alert.alert(
-            'Error',
-            'Token, site, atau role tidak ditemukan. Silakan login ulang.',
-          );
-          return;
-        }
-        setRole(role);
-        setFormData(prev => ({
-          ...prev,
-          jde_no: user.username || '',
-          employee_name: user.name || '',
-          site: site,
-        }));
-      } catch (error) {
-        console.error('Error fetch initial data:', error);
-        Alert.alert('Error', 'Terjadi kesalahan saat mengambil data awal');
-      }
-    };
-    fetchInitialData();
+    const unsub = NetInfo.addEventListener(state =>
+      setIsConnected(state.isConnected === true),
+    );
+    NetInfo.fetch().then(state => setIsConnected(state.isConnected === true));
+    return () => unsub();
   }, []);
 
-  // ======== ON KPI CHANGE, FETCH ACTIVITY SESUAI KPI, ROLE, SITE ========
-  const onKpiChange = async selectedKpi => {
+  // Load Master Dropdown (cached only, supaya ringan)
+  useEffect(() => {
+    (async () => {
+      // KPI
+      const kpiCache = await AsyncStorage.getItem('dropdown_kpi');
+      if (kpiCache) setKpiOptions(JSON.parse(kpiCache));
+      // Unit
+      const unitCache = await AsyncStorage.getItem('dropdown_unit');
+      if (unitCache) setUnitOptions(JSON.parse(unitCache));
+      // Activity master (all)
+      const actCache = await AsyncStorage.getItem('cached_all_activity');
+      if (actCache) {
+        // Tidak setActivityOptions di sini, baru setelah user pilih KPI/site di bawah
+      }
+    })();
+  }, []);
+
+  // Ambil detail data untuk edit (prioritas dari server jika online, cache jika offline)
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      if (isConnected) {
+        try {
+          const res = await axios.get(
+            `${API_BASE_URL}/dayActivities/${id}/edit`,
+          );
+          const rawData = res.data?.data;
+          if (!rawData) return Alert.alert('Error', 'Data tidak ditemukan');
+          setFormData({
+            jde_no: rawData.jde_no || '',
+            employee_name: rawData.employee_name || '',
+            site: rawData.site || '',
+            date_activity: rawData.date_activity || '',
+            kpi_type: rawData.kpi_type || '',
+            activity: rawData.activity || '',
+            unit_detail: rawData.unit_detail || '',
+            total_participant: String(rawData.total_participant || ''),
+            total_hour: String(rawData.total_hour || ''),
+          });
+          setUnitValue(rawData.unit_detail || '');
+          if (rawData.date_activity)
+            setSelectedDate(new Date(rawData.date_activity));
+        } catch {
+          Alert.alert('Error', 'Gagal mengambil data detail dari server.');
+        }
+      } else {
+        // OFFLINE: ambil dari cache index
+        const cache = await AsyncStorage.getItem('cached_daily_activity_list');
+        if (cache) {
+          const arr = JSON.parse(cache);
+          const rawData = arr.find(item => String(item.id) === String(id));
+          if (rawData) {
+            setFormData({
+              jde_no: rawData.jde_no || '',
+              employee_name: rawData.employee_name || '',
+              site: rawData.site || '',
+              date_activity: rawData.date_activity || '',
+              kpi_type: rawData.kpi_type || '',
+              activity: rawData.activity || '',
+              unit_detail: rawData.unit_detail || '',
+              total_participant: String(rawData.total_participant || ''),
+              total_hour: String(rawData.total_hour || ''),
+            });
+            setUnitValue(rawData.unit_detail || '');
+            if (rawData.date_activity)
+              setSelectedDate(new Date(rawData.date_activity));
+          } else {
+            Alert.alert(
+              'Offline',
+              'Data tidak ditemukan di cache. Silakan online dulu.',
+            );
+          }
+        } else {
+          Alert.alert(
+            'Offline',
+            'Cache kosong. Silakan online untuk ambil data.',
+          );
+        }
+      }
+      setLoading(false);
+    };
+    fetchData();
+  }, [id, isConnected]);
+
+  // Filter Activity by KPI/site (baru setelah user pilih KPI)
+  useEffect(() => {
+    (async () => {
+      if (!formData.kpi_type) return setActivityOptions([]);
+      // Ambil semua activity master (dari cache)
+      const actCache = await AsyncStorage.getItem('cached_all_activity');
+      const allActivity = actCache ? JSON.parse(actCache) : [];
+      // Filter by KPI + site (jika ada)
+      const filtered = allActivity.filter(
+        act =>
+          String(act.kpi) === String(formData.kpi_type) &&
+          (!act.site || act.site === formData.site),
+      );
+      setActivityOptions(
+        filtered.map(act => ({
+          label: act.activity,
+          value: act.id,
+        })),
+      );
+    })();
+  }, [formData.kpi_type, formData.site]);
+
+  // Handle KPI Change
+  const onKpiChange = selectedKpi => {
     setFormData(prev => ({...prev, kpi_type: selectedKpi, activity: ''}));
-    try {
-      const {token, role, site} = await getSession();
-      if (!token || !role || !site) return;
-      // Panggil API getActivity, hasil harus diambil dari data.data (array)
-      const activityResp = await axios.get(`${API_BASE_URL}/getActivity`, {
-        headers: {Authorization: `Bearer ${token}`},
-        params: {kpi: selectedKpi, role, site},
-      });
-      const actData = (activityResp.data?.data || []).map(act => ({
-        label: act.activity,
-        value: act.id,
-      }));
-      setActivityOptions(actData);
-    } catch (error) {
-      Alert.alert('Error', 'Gagal mengambil data activity');
-    }
   };
-
-  // ======== HANDLE FIELD CHANGE UNTUK formData ========
-  const handleChange = (name, value) => {
+  const handleChange = (name, value) =>
     setFormData(prev => ({...prev, [name]: value}));
-  };
 
-  // ======== HANDLE GANTI TANGGAL AKTIVITAS ========
+  // Date picker
   const handleDateChange = (_event, selected) => {
     const currentDate = selected || selectedDate;
     setShowDatePicker(Platform.OS === 'ios');
@@ -202,9 +211,13 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
     handleChange('date_activity', formatted);
   };
 
-  // ======== SUBMIT FORM (PUT UPDATE DATA) ========
+  // Submit update (PUT)
   const handleSubmit = async () => {
-    // Validasi semua field wajib diisi
+    if (!isConnected) {
+      Alert.alert('Offline', 'Edit hanya bisa disimpan ketika online.');
+      return;
+    }
+    // Validasi
     const requiredFields = [
       'jde_no',
       'employee_name',
@@ -222,7 +235,6 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
         return;
       }
     }
-    // Activity harus ID numerik
     if (!Number.isInteger(Number(formData.activity))) {
       Alert.alert('Validasi Gagal', 'Activity ID tidak valid.');
       return;
@@ -261,16 +273,6 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
           'Sukses',
           response.data.message || 'Data berhasil disimpan',
         );
-        setFormData(prev => ({
-          ...prev,
-          date_activity: '',
-          kpi_type: '',
-          activity: '',
-          unit_detail: '',
-          total_participant: '',
-          total_hour: '',
-        }));
-        setUnitValue(null);
         navigation.navigate('DailyActivity');
       } else {
         Alert.alert('Gagal', response.data.message || 'Gagal menyimpan data');
@@ -287,113 +289,51 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
     }
   };
 
-  // ======== FETCH KPI, EDIT DATA, DAN ACTIVITY PERTAMA KALI (untuk dropdown) ========
-  useEffect(() => {
-    const fetchInitialData = async () => {
-      try {
-        const {token, role, site} = await getSession();
-        if (!token || !role || !site) return;
+  if (loading) {
+    return (
+      <SafeAreaView
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: '#fff',
+        }}>
+        <ActivityIndicator size="large" color="#1E90FF" />
+        <Text style={{marginTop: 14}}>Loading data ...</Text>
+      </SafeAreaView>
+    );
+  }
 
-        // Fetch KPI list
-        const kpiResp = await axios.get(`${API_BASE_URL}/getKPI`);
-        const kpiData = (kpiResp.data?.data || []).map(kpi => ({
-          label: kpi.kpi,
-          value: kpi.id,
-        }));
-        setKpiOptions(kpiData);
-
-        // Fetch edit data
-        const editResp = await axios.get(
-          `${API_BASE_URL}/dayActivities/${id}/edit`,
-        );
-        const rawData = editResp.data?.data;
-        if (!rawData) {
-          alert('Data tidak ditemukan');
-          return;
-        }
-        setHeaderData(rawData);
-
-        const selectedKpi = rawData.kpi_type || kpiData[0]?.value;
-        setFormData(prev => ({
-          ...prev,
-          jde_no: rawData.jde_no || '',
-          employee_name: rawData.employee_name || '',
-          site: rawData.site || '',
-          date_activity: rawData.date_activity || '',
-          kpi_type: selectedKpi,
-          total_participant: String(rawData.total_participant || ''),
-          total_hour: String(rawData.total_hour || ''),
-        }));
-        setSelectedDate(new Date(rawData.date_activity));
-
-        // Fetch activity list untuk KPI terpilih
-        const activityResp = await axios.get(`${API_BASE_URL}/getActivity`, {
-          params: {
-            kpi: selectedKpi,
-            role,
-            site,
-          },
-        });
-        const actData = (activityResp.data?.data || []).map(act => ({
-          label: act.activity,
-          value: act.id,
-        }));
-        setActivityOptions(actData);
-
-        // Set value activity & unit dari rawData
-        setFormData(prev => ({
-          ...prev,
-          activity: rawData.activity,
-        }));
-        setUnitValue(rawData.unit_detail || '');
-        setFormData(prev => ({
-          ...prev,
-          unit_detail: rawData.unit_detail || '',
-        }));
-      } catch (error) {
-        console.error('Error fetch initial data:', error);
-        Alert.alert('Error', 'Terjadi kesalahan saat mengambil data awal');
-      }
-    };
-    fetchInitialData();
-  }, [id]);
-
-  // ======== FETCH DATA LIST UNIT UNTUK DROPDOWN PICKER ========
-  useEffect(() => {
-    const fetchUnitOptions = async () => {
-      try {
-        const token = await AsyncStorage.getItem('userToken');
-        const res = await axios.get(`${API_BASE_URL}/getModelUnit`, {
-          headers: {Authorization: `Bearer ${token}`},
-        });
-        const unitData = res.data.map(u => ({
-          label: u.model,
-          value: String(u.id),
-          modelOnly: u.model,
-        }));
-        setUnitOptions(unitData);
-      } catch (err) {
-        console.error('Error fetch unit options:', err);
-      }
-    };
-    fetchUnitOptions();
-  }, []);
-
-  // Handler untuk perubahan Activity
-  const onActivityChange = val => {
-    handleChange('activity', val);
-  };
-
-  // ======== RENDER UI ========
   return (
-    <View style={{flex: 1}}>
+    <SafeAreaView style={{flex: 1, backgroundColor: '#fff'}}>
       <KeyboardAwareScrollView
-        contentContainerStyle={addDailyAct.container}
+        contentContainerStyle={[
+          addDailyAct.container,
+          {paddingBottom: 24 + insets.bottom}, // Aman tombol simpan!
+        ]}
         keyboardShouldPersistTaps="handled"
         extraScrollHeight={120}>
-        <Text style={addDailyAct.header}>EDIT DAILY ACTIVITY</Text>
+        {/* Status Online/Offline */}
+        <View style={{alignItems: 'flex-end', marginBottom: 8, marginTop: 8}}>
+          <Text
+            style={{
+              backgroundColor: isConnected ? '#d4edda' : '#f8d7da',
+              color: isConnected ? '#155724' : '#721c24',
+              paddingHorizontal: 12,
+              paddingVertical: 4,
+              borderRadius: 16,
+              fontWeight: 'bold',
+              fontSize: 13,
+              alignSelf: 'flex-end',
+            }}>
+            {isConnected ? '🟢 Online' : '🔴 Offline'}
+          </Text>
+        </View>
+        <Text style={[addDailyAct.header, {textAlign: 'center', marginTop: 6}]}>
+          EDIT DAILY ACTIVITY
+        </Text>
 
-        {/* --- User Info Section --- */}
+        {/* User Info */}
         <CollapsibleCard title="User Info">
           <Text style={addDailyAct.label}>JDE No</Text>
           <TextInput
@@ -414,8 +354,7 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
             editable={false}
           />
         </CollapsibleCard>
-
-        {/* --- Activity Info Section --- */}
+        {/* Activity Info */}
         <CollapsibleCard title="Activity Info">
           <Text style={addDailyAct.label}>Date Activity</Text>
           <TouchableOpacity onPress={() => setShowDatePicker(true)}>
@@ -435,7 +374,6 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
               maximumDate={new Date()}
             />
           )}
-
           <Text style={addDailyAct.label}>KPI Type</Text>
           <RNPickerSelect
             onValueChange={onKpiChange}
@@ -447,10 +385,9 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
               inputAndroid: addDailyAct.pickerSelectAndroid,
             }}
           />
-
           <Text style={addDailyAct.label}>Activity</Text>
           <RNPickerSelect
-            onValueChange={onActivityChange}
+            onValueChange={val => handleChange('activity', val)}
             value={formData.activity}
             placeholder={{label: 'Pilih Activity', value: ''}}
             items={activityOptions}
@@ -460,8 +397,7 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
             }}
           />
         </CollapsibleCard>
-
-        {/* --- Unit Info Section --- */}
+        {/* Unit Info */}
         <CollapsibleCard title="Unit Info">
           <Text style={addDailyAct.label}>Detail Unit</Text>
           <DropDownPicker
@@ -485,8 +421,7 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
             zIndexInverse={1000}
           />
         </CollapsibleCard>
-
-        {/* --- Participant Info Section --- */}
+        {/* Participant Info */}
         <CollapsibleCard title="Participant Info">
           <Text style={addDailyAct.label}>Total Participant</Text>
           <TextInput
@@ -495,7 +430,6 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
             value={formData.total_participant}
             onChangeText={text => handleChange('total_participant', text)}
           />
-
           <Text style={addDailyAct.label}>Total Hour</Text>
           <TextInput
             style={addDailyAct.input}
@@ -504,11 +438,12 @@ const EditDailyActivity = ({route}: {route: {params: {id: string}}}) => {
             onChangeText={text => handleChange('total_hour', text)}
           />
         </CollapsibleCard>
-
-        {/* --- Simpan Button --- */}
-        <Button title="Simpan" onPress={handleSubmit} />
+        {/* Simpan */}
+        <View style={{marginTop: 24}}>
+          <Button title="Simpan" onPress={handleSubmit} />
+        </View>
       </KeyboardAwareScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 

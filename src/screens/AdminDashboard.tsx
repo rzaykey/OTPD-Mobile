@@ -16,15 +16,18 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import * as Animatable from 'react-native-animatable';
 import {dashboardStyles as styles} from '../styles/dashboardStyles';
 import API_BASE_URL from '../config';
+// Tambahkan untuk safe area bottom
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 if (!(global as any)._IS_NEW_ARCHITECTURE_ENABLED) {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
-// Enable LayoutAnimation (Android only)
 
+// Tipe untuk props navigation stack
 type Props = NativeStackScreenProps<RootStackParamList, 'AdminDashboard'>;
 
+// Master menu untuk dashboard
 const categories = [
   {
     id: '1',
@@ -36,26 +39,10 @@ const categories = [
         label: 'Tambah Mentoring',
         icon: 'add-circle-outline',
         subsubmenu: [
-          {
-            label: 'Form Digger',
-            icon: 'cog',
-            screen: 'AddDataMentoring',
-          },
-          {
-            label: 'Form Hauler',
-            icon: 'cog',
-            screen: 'AddDataMentoring',
-          },
-          {
-            label: 'Form Bulldozer',
-            icon: 'cog',
-            screen: 'AddDataMentoring',
-          },
-          {
-            label: 'Form Grader',
-            icon: 'cog',
-            screen: 'AddDataMentoring',
-          },
+          {label: 'Form Digger', icon: 'cog', screen: 'AddDataMentoring'},
+          {label: 'Form Hauler', icon: 'cog', screen: 'AddDataMentoring'},
+          {label: 'Form Bulldozer', icon: 'cog', screen: 'AddDataMentoring'},
+          {label: 'Form Grader', icon: 'cog', screen: 'AddDataMentoring'},
         ],
       },
     ],
@@ -93,42 +80,54 @@ const categories = [
   },
 ];
 
+// Default summary agar field tidak pernah hilang meski API error
+const defaultSummary = {
+  mentoringToday: 0,
+  dailyToday: 0,
+  trainHoursToday: 0,
+  unitTotal: 0,
+  typeTotal: 0,
+  modelTotal: 0,
+  classTotal: 0,
+  siteTotal: 0,
+};
+
 const AdminDashboard = ({navigation}: Props) => {
+  // Safe area bottom, agar UI tidak ketutup navigation bar device
+  const insets = useSafeAreaInsets();
+
   const [user, setUser] = useState<any>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState('1');
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
 
-  const [summary, setSummary] = useState({
-    mentoringToday: 0,
-    dailyToday: 0,
-    trainHoursToday: 0,
-    unitTotal: 0,
-    typeTotal: 0,
-    modelTotal: 0,
-    classTotal: 0,
-    siteTotal: 0,
-    // jika mau: mentoringAll, dsb
-  });
+  // Gunakan defaultSummary supaya summary selalu lengkap
+  const [summary, setSummary] = useState(defaultSummary);
   const [loadingSummary, setLoadingSummary] = useState(true);
 
+  // Ambil summary dashboard (mentoring, daily, dsb)
   useEffect(() => {
     fetchSummary();
   }, []);
 
+  // Ambil summary dari API, fallback ke default jika error
   const fetchSummary = async () => {
     try {
       setLoadingSummary(true);
       const res = await fetch(`${API_BASE_URL}/dashboard`);
       const json = await res.json();
-      setSummary(json.data); // json.data: { mentoringToday, dailyToday, trainHoursToday }
+      setSummary(
+        json.data && typeof json.data === 'object'
+          ? {...defaultSummary, ...json.data}
+          : defaultSummary,
+      );
     } catch (err) {
-      // handle error (alert, dsb)
-      setSummary({mentoringToday: 0, dailyToday: 0, trainHoursToday: 0});
+      setSummary(defaultSummary);
     } finally {
       setLoadingSummary(false);
     }
   };
 
+  // Ambil user dari storage
   useEffect(() => {
     const fetchUser = async () => {
       const userString = await AsyncStorage.getItem('userData');
@@ -137,19 +136,19 @@ const AdminDashboard = ({navigation}: Props) => {
     fetchUser();
   }, []);
 
-  // Logout
+  // Logout handler
   const handleLogout = async () => {
     await AsyncStorage.multiRemove(['userToken', 'userRole', 'userData']);
     navigation.replace('Login');
   };
 
-  // Category (bottom menu) press
+  // Handler pilih kategori (Mentoring, Trainer)
   const handleCategoryPress = (categoryId: string) => {
     setSelectedCategoryId(prev => (prev === categoryId ? null : categoryId));
     setActiveSubmenu(null);
   };
 
-  // Submenu press
+  // Handler submenu (misal Tambah Mentoring)
   const handleSubmenuPress = (item: any) => {
     if (item.subsubmenu) {
       setActiveSubmenu(prev => (prev === item.label ? null : item.label));
@@ -159,10 +158,9 @@ const AdminDashboard = ({navigation}: Props) => {
     }
   };
 
-  // Subsubmenu press
+  // Handler subsubmenu (misal Form Digger)
   const handleSubsubmenuPress = (item: any) => {
     if (item.screen === 'AddDataMentoring') {
-      // Pass unitType for AddDataMentoring
       const unitType = item.label.replace('Form ', '').toUpperCase();
       navigation.navigate(item.screen, {data: {unitType}});
     } else {
@@ -174,7 +172,7 @@ const AdminDashboard = ({navigation}: Props) => {
     cat => cat.id === selectedCategoryId,
   );
 
-  // Render Subsubmenu as Grid
+  // Render subsubmenu dalam bentuk grid
   const renderSubsubmenu = (items: any[]) => (
     <Animatable.View animation="fadeInUp" duration={400} style={{marginTop: 6}}>
       <View
@@ -187,11 +185,8 @@ const AdminDashboard = ({navigation}: Props) => {
         }}>
         {items.map((item, idx) => (
           <TouchableOpacity
-            key={item.id ? item.id : `${item.label}-${idx}`} // <-- lebih aman
-            style={[
-              styles.subGridCard,
-              {width: '47%'}, // 2 kolom responsif
-            ]}
+            key={item.id ? item.id : `${item.label}-${idx}`}
+            style={[styles.subGridCard, {width: '47%'}]}
             activeOpacity={0.8}
             onPress={() => handleSubsubmenuPress(item)}>
             <Icon name={item.icon} size={34} color="#1E90FF" />
@@ -202,10 +197,15 @@ const AdminDashboard = ({navigation}: Props) => {
     </Animatable.View>
   );
 
+  // --- UI Render ---
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={[styles.scroll, {paddingBottom: 90}]}>
-        {/* HEADER */}
+    <SafeAreaView style={[styles.container, {paddingBottom: insets.bottom}]}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          {paddingBottom: Math.max(insets.bottom, 90)},
+        ]}>
+        {/* HEADER LOGO */}
         <View style={{alignItems: 'center', marginTop: 16, marginBottom: 2}}>
           <Image
             source={require('../assets/images/logo.jpg')}
@@ -216,13 +216,14 @@ const AdminDashboard = ({navigation}: Props) => {
             }}
           />
         </View>
+        {/* HEADER User Info & Logout */}
         <Animatable.View
           animation="fadeInDown"
           delay={70}
           style={styles.headerCard}>
           <Text style={styles.headerText}>
             <Icon name="person-circle-outline" size={22} color="#fff" /> Selamat
-            datang, {user.username}!
+            datang, {user?.username}!
           </Text>
           <TouchableOpacity
             onPress={handleLogout}
@@ -240,6 +241,7 @@ const AdminDashboard = ({navigation}: Props) => {
             </View>
           )}
         </Animatable.View>
+        {/* SUMMARY DASHBOARD */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -293,6 +295,7 @@ const AdminDashboard = ({navigation}: Props) => {
               <Text style={styles.summarySub}>Hari ini</Text>
             </TouchableOpacity>
           </Animatable.View>
+          {/* Summary cards lainnya */}
           <Animatable.View
             animation="fadeInUp"
             duration={600}
@@ -383,7 +386,7 @@ const AdminDashboard = ({navigation}: Props) => {
               horizontal
               keyExtractor={(item, idx) =>
                 item.id ? String(item.id) : `${item.label}-${idx}`
-              } // <-- aman
+              }
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{
                 paddingHorizontal: 8,
@@ -428,8 +431,12 @@ const AdminDashboard = ({navigation}: Props) => {
           )}
       </ScrollView>
 
-      {/* BOTTOM BAR */}
-      <View style={styles.bottomMenuBar}>
+      {/* BOTTOM BAR, diberi padding bottom safe area */}
+      <View
+        style={[
+          styles.bottomMenuBar,
+          {paddingBottom: insets.bottom > 0 ? insets.bottom : 10},
+        ]}>
         {categories.map(category => (
           <TouchableOpacity
             key={category.id}

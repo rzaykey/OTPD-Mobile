@@ -170,4 +170,28 @@ export const dashboardStyles = {
     marginTop: 4,
     opacity: 0.86,
   },
+  statusContainer: {
+    alignItems: 'flex-end',
+  },
+  statusIndicator: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 16,
+    fontWeight: 'bold',
+    fontSize: 13,
+    marginBottom: 2,
+  },
+  statusOnline: {
+    backgroundColor: '#d4edda',
+    color: '#155724',
+  },
+  statusOffline: {
+    backgroundColor: '#f8d7da',
+    color: '#721c24',
+  },
+  statusTime: {
+    fontSize: 12,
+    color: '#555',
+    fontWeight: '500',
+  },
 };

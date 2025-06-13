@@ -20,15 +20,17 @@ import {editDataStyles as styles} from '../../styles/editDataStyles';
 import {pickerSelectStyles} from '../../styles/pickerSelectStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useNavigation} from '@react-navigation/native';
-import {RootStackParamList} from '../../navigation/types';
 import API_BASE_URL from '../../config';
 
+// Aktifkan LayoutAnimation untuk Android
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// ToggleCard: Komponen Card Expand/Collapse
+/**
+ * Komponen Card yang bisa di-expand/collapse
+ */
 const ToggleCard = ({title, children, defaultExpanded = true}) => {
   const [expanded, setExpanded] = useState(defaultExpanded);
   return (
@@ -48,11 +50,14 @@ const ToggleCard = ({title, children, defaultExpanded = true}) => {
   );
 };
 
+/**
+ * Halaman Tambah Data Mentoring
+ */
 const AddDataMentoring = ({route}) => {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
 
-  // === State Definitions ===
+  // --- State: Data & Form ---
   const [operatorJDE, setOperatorJDE] = useState(null);
   const [operatorName, setOperatorName] = useState(null);
   const [trainerName, setTrainerName] = useState(null);
@@ -61,17 +66,14 @@ const AddDataMentoring = ({route}) => {
   const [operatorQuery, setOperatorQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
-  const [headerData, setHeaderData] = useState(null);
   const [rawSiteList, setRawSiteList] = useState([]);
-  const [siteList, setSiteList] = useState([]);
   const [modelUnitRaw, setModelUnitRaw] = useState([]);
   const [unitRaw, setUnitRaw] = useState([]);
   const [unitTypes, setUnitTypes] = useState([]);
   const [modelUnits, setModelUnits] = useState([]);
   const [unitNumbers, setUnitNumbers] = useState([]);
   const {data} = route.params;
-  const {unitType} = data;
-  const {unitTypeId} = data;
+  const {unitType, unitTypeId} = data;
   const [unitModel, setUnitModel] = useState(null);
   const [unitNumber, setUnitNumber] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -86,7 +88,6 @@ const AddDataMentoring = ({route}) => {
   const [editableDetails, setEditableDetails] = React.useState([]);
   const [area, setArea] = useState(null);
   const [points, setPoints] = useState({});
-  const [showOperatorCard, setShowOperatorCard] = useState(false);
 
   // --- Fetch indikator berdasarkan unitTypeId ---
   useEffect(() => {
@@ -95,7 +96,7 @@ const AddDataMentoring = ({route}) => {
     }
   }, [unitTypeId]);
 
-  // Ambil data indikator dari API berdasarkan tipe unit
+  // Ambil indikator per unit type dari API
   const fetchIndicatorsByType = async unitTypeId => {
     try {
       const response = await fetch(
@@ -112,7 +113,7 @@ const AddDataMentoring = ({route}) => {
     }
   };
 
-  // Ambil data user login untuk prefill trainer info
+  // Prefill info user login untuk trainer
   useEffect(() => {
     const fetchUser = async () => {
       try {
@@ -128,13 +129,12 @@ const AddDataMentoring = ({route}) => {
     fetchUser();
   }, []);
 
-  // Fetch semua data statis (site, unit, model, dst)
+  // Ambil data master: site, unit, model, dst
   useEffect(() => {
     const fetchData = async () => {
       try {
         const res = await axios.get(`${API_BASE_URL}/mentoring/createData`);
         const {
-          header,
           siteList: site_list,
           models: model_unit,
           units: unit,
@@ -155,7 +155,7 @@ const AddDataMentoring = ({route}) => {
     fetchData();
   }, []);
 
-  // Unit Type options dari data model unit (distinct class)
+  // Unit Type dari modelUnitRaw
   useEffect(() => {
     if (!modelUnitRaw.length) return;
     const types = Array.from(
@@ -164,7 +164,7 @@ const AddDataMentoring = ({route}) => {
     setUnitTypes(types);
   }, [modelUnitRaw]);
 
-  // Model unit berdasarkan unitTypeId
+  // Model Unit (filter by type)
   useEffect(() => {
     if (!unitTypeId || !modelUnitRaw.length) {
       setModelUnits([]);
@@ -178,7 +178,7 @@ const AddDataMentoring = ({route}) => {
     setUnitModel(null);
   }, [unitTypeId, modelUnitRaw]);
 
-  // Nomor unit berdasarkan model unit
+  // Unit Number (filter by model)
   useEffect(() => {
     if (!unitModel || !unitRaw.length) {
       setUnitNumbers([]);
@@ -192,7 +192,7 @@ const AddDataMentoring = ({route}) => {
     setUnitNumber(null);
   }, [unitModel, unitRaw]);
 
-  // Cari operator (API search)
+  // Search operator by query (API)
   const searchOperator = async text => {
     setOperatorQuery(text);
     setShowResults(true);
@@ -208,7 +208,7 @@ const AddDataMentoring = ({route}) => {
     }
   };
 
-  // Pilih operator dari hasil pencarian
+  // Pilih operator dari hasil search
   const handleSelectOperator = item => {
     setOperatorJDE(item.employeeId);
     setOperatorName(item.EmployeeName);
@@ -216,17 +216,14 @@ const AddDataMentoring = ({route}) => {
     setShowResults(false);
   };
 
-  // Checkbox handler indikator
+  // Checkbox per indikator
   const toggleCheckbox = (fid, field) => {
     setEditableDetails(prev => {
       const existing = prev.find(d => d.fid_indicator === fid);
       if (existing) {
         return prev.map(d =>
           d.fid_indicator === fid
-            ? {
-                ...d,
-                [field]: d[field] === '1' ? '0' : '1',
-              }
+            ? {...d, [field]: d[field] === '1' ? '0' : '1'}
             : d,
         );
       } else {
@@ -265,7 +262,7 @@ const AddDataMentoring = ({route}) => {
     });
   };
 
-  // Kalkulasi poin per kategori
+  // Kalkulasi points per kategori (live)
   const calculatePoints = details => {
     const newPoints = {};
     for (const kategori in indicators) {
@@ -295,9 +292,9 @@ const AddDataMentoring = ({route}) => {
   useEffect(() => {
     const updatedPoints = calculatePoints(editableDetails);
     setPoints(updatedPoints);
-  }, [editableDetails]);
+  }, [editableDetails, indicators]);
 
-  // Handler DateTime Picker
+  // Handler Date/Time Picker
   const onChangeDate = (event, selectedDate) => {
     if (Platform.OS === 'android') setShowDatePicker(false);
     if (event.type === 'dismissed') return;
@@ -314,7 +311,7 @@ const AddDataMentoring = ({route}) => {
     if (selectedTime) setEndTime(selectedTime);
   };
 
-  // Toggle visibilitas kategori indikator
+  // Expand/collapse kategori indikator
   const toggleCategoryVisibility = kategori => {
     setVisibleCategories(prev => ({
       ...prev,
@@ -322,7 +319,7 @@ const AddDataMentoring = ({route}) => {
     }));
   };
 
-  // Render rekap poin observasi/mentoring
+  // Rekap points observasi/mentoring per kategori
   const renderLivePointsSection = type => {
     const isObs = type === 'observasi';
     const dataFiltered = Object.values(points);
@@ -338,54 +335,46 @@ const AddDataMentoring = ({route}) => {
       dataFiltered.length && !isNaN(totalPoint)
         ? (totalPoint / dataFiltered.length).toFixed(1)
         : '0.0';
-    return {
-      totalYScore,
-      totalPoint,
-      averagePoint,
-      jsx: (
-        <ToggleCard
-          title={isObs ? 'Rekap Point Observasi' : 'Rekap Point Mentoring'}>
-          <View style={styles.pointsGrid}>
-            {dataFiltered.map((item, index) => (
-              <View key={index} style={styles.pointCard}>
-                <Text style={styles.pointCategory}>{item.indicator}</Text>
-                <View style={styles.pointRow}>
-                  <Text style={styles.pointLabel}>Y Score:</Text>
-                  <Text style={styles.pointValue}>
-                    {isObs ? item.yscoreObservasi : item.yscoreMentoring}
-                  </Text>
-                </View>
-                <View style={styles.pointRow}>
-                  <Text style={styles.pointLabel}>Point:</Text>
-                  <Text style={styles.pointValue}>
-                    {isObs ? item.pointObservasi : item.pointMentoring}
-                  </Text>
-                </View>
-              </View>
-            ))}
-            <View style={[styles.pointCard, styles.summaryCard]}>
-              <Text style={[styles.pointCategory, {fontWeight: 'bold'}]}>
-                AVERAGE POINT
-              </Text>
+    return (
+      <ToggleCard
+        title={isObs ? 'Rekap Point Observasi' : 'Rekap Point Mentoring'}>
+        <View style={styles.pointsGrid}>
+          {dataFiltered.map((item, index) => (
+            <View key={index} style={styles.pointCard}>
+              <Text style={styles.pointCategory}>{item.indicator}</Text>
               <View style={styles.pointRow}>
-                <Text style={styles.pointLabel}>Total Y Score:</Text>
-                <Text style={styles.pointValue}>{totalYScore}</Text>
+                <Text style={styles.pointLabel}>Y Score:</Text>
+                <Text style={styles.pointValue}>
+                  {isObs ? item.yscoreObservasi : item.yscoreMentoring}
+                </Text>
               </View>
               <View style={styles.pointRow}>
-                <Text style={styles.pointLabel}>Average Point:</Text>
-                <Text style={styles.pointValue}>{averagePoint}</Text>
+                <Text style={styles.pointLabel}>Point:</Text>
+                <Text style={styles.pointValue}>
+                  {isObs ? item.pointObservasi : item.pointMentoring}
+                </Text>
               </View>
             </View>
+          ))}
+          <View style={[styles.pointCard, styles.summaryCard]}>
+            <Text style={[styles.pointCategory, {fontWeight: 'bold'}]}>
+              AVERAGE POINT
+            </Text>
+            <View style={styles.pointRow}>
+              <Text style={styles.pointLabel}>Total Y Score:</Text>
+              <Text style={styles.pointValue}>{totalYScore}</Text>
+            </View>
+            <View style={styles.pointRow}>
+              <Text style={styles.pointLabel}>Average Point:</Text>
+              <Text style={styles.pointValue}>{averagePoint}</Text>
+            </View>
           </View>
-        </ToggleCard>
-      ),
-    };
+        </View>
+      </ToggleCard>
+    );
   };
 
-  const observasiPoints = renderLivePointsSection('observasi');
-  const mentoringPoints = renderLivePointsSection('mentoring');
-
-  // --- Submit: Store ke API ---
+  // --- Submit form ke backend
   const handleSubmit = async () => {
     try {
       setLoading(true);
@@ -397,6 +386,7 @@ const AddDataMentoring = ({route}) => {
       if (!operatorJDE || !operatorName || !site || !area)
         throw new Error('Harap lengkapi semua informasi operator');
 
+      // Kalkulasi poin
       const calcPoints = type => {
         const isObs = type === 'observasi';
         const dataFiltered = Object.values(points);
@@ -446,8 +436,6 @@ const AddDataMentoring = ({route}) => {
           is_observasi: detail.is_observasi,
           is_mentoring: detail.is_mentoring,
           note_observasi: detail.note_observasi || '',
-          yscore: detail.yscore,
-          point: detail.point,
         })),
       };
       const response = await axios.post(
@@ -459,16 +447,15 @@ const AddDataMentoring = ({route}) => {
             Authorization: `Bearer ${token}`,
             Accept: 'application/json',
           },
-          withCredentials: true,
         },
       );
 
       if (response.data.success) {
-        alert('Data mentoring berhasil diperbarui!');
+        alert('Data mentoring berhasil ditambahkan!');
         if (navigation.canGoBack()) navigation.goBack();
         else navigation.navigate('FullDashboard');
       } else {
-        throw new Error(response.data.message || 'Gagal memperbarui data');
+        throw new Error(response.data.message || 'Gagal menambah data');
       }
     } catch (error) {
       if (error.response?.status === 401) {
@@ -489,7 +476,7 @@ const AddDataMentoring = ({route}) => {
     }
   };
 
-  // --- Render UI ---
+  // --- Loader
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -498,6 +485,7 @@ const AddDataMentoring = ({route}) => {
     );
   }
 
+  // --- Render UI
   return (
     <ScrollView
       style={{flex: 1}}
@@ -505,7 +493,8 @@ const AddDataMentoring = ({route}) => {
       keyboardShouldPersistTaps="handled">
       <View style={styles.container}>
         <Text style={styles.title}>Tambah Data Mentoring {unitType}</Text>
-        {/* Header */}
+
+        {/* Header (trainer/operator/site) */}
         <View style={styles.card}>
           <TouchableOpacity
             style={styles.toggleButton}
@@ -538,7 +527,7 @@ const AddDataMentoring = ({route}) => {
                   />
                 </View>
               </View>
-              {/* Operator Section */}
+              {/* Operator Search & Select */}
               <View style={{padding: 1, marginBottom: 16}}>
                 <Text style={{fontSize: 16, marginBottom: 8}}>Operator</Text>
                 <View style={{position: 'relative'}}>
@@ -556,7 +545,7 @@ const AddDataMentoring = ({route}) => {
                       },
                     ]}
                   />
-                  {/* Operator Dropdown Popup */}
+                  {/* Dropdown Operator */}
                   {showResults && searchResults.length > 0 && (
                     <View style={styles.operatorDropdownBox}>
                       <FlatList
@@ -581,7 +570,7 @@ const AddDataMentoring = ({route}) => {
                     </View>
                   )}
                 </View>
-                {/* Selected Operator Info */}
+                {/* Info Operator terpilih */}
                 <View style={styles.operatorBox}>
                   <Text style={{fontSize: 16, marginBottom: 8}}>
                     Operator JDE: {operatorJDE}
@@ -598,7 +587,6 @@ const AddDataMentoring = ({route}) => {
                   </Text>
                 </View>
               </View>
-
               {/* Site & Lokasi */}
               <View style={styles.row}>
                 <View style={styles.half}>
@@ -727,7 +715,7 @@ const AddDataMentoring = ({route}) => {
           </View>
         </ToggleCard>
 
-        {/* Indicators */}
+        {/* Indikator */}
         <ToggleCard title="Indikator Mentoring" defaultExpanded={true}>
           {Object.entries(indicators).map(([kategori, list]) => (
             <View key={kategori} style={styles.indicatorCategory}>
@@ -759,7 +747,6 @@ const AddDataMentoring = ({route}) => {
                         <Text style={styles.indicatorParam}>
                           • {ind.param1}
                         </Text>
-                        {/* Jika ada param2 */}
                         {ind.param2 && (
                           <Text style={styles.indicatorParam}>
                             • {ind.param2}
@@ -777,8 +764,8 @@ const AddDataMentoring = ({route}) => {
                                 )
                               }
                               tintColors={{true: '#111', false: '#111'}}
-                              boxType="square" // for iOS
-                              style={{width: 20, height: 20}} // so it's always visible
+                              boxType="square"
+                              style={{width: 20, height: 20}}
                             />
                           </View>
                         </View>
@@ -799,7 +786,6 @@ const AddDataMentoring = ({route}) => {
                             />
                           </View>
                         </View>
-
                         <View style={styles.detailRow}>
                           <Text style={styles.detailLabel}>Catatan:</Text>
                           <TextInput
@@ -815,7 +801,7 @@ const AddDataMentoring = ({route}) => {
                       </View>
                     );
                   })}
-                  {/* NILAI POINT PER KATEGORI */}
+                  {/* Skor Kategori */}
                   <View style={styles.categoryScore}>
                     <Text style={styles.scoreText}>
                       Observasi : Y Score:{' '}
@@ -835,8 +821,8 @@ const AddDataMentoring = ({route}) => {
         </ToggleCard>
 
         {/* Summary */}
-        {observasiPoints.jsx}
-        {mentoringPoints.jsx}
+        {renderLivePointsSection('observasi')}
+        {renderLivePointsSection('mentoring')}
 
         <Button title="Simpan" onPress={handleSubmit} />
       </View>
