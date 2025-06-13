@@ -14,26 +14,32 @@ import {
 import {Picker} from '@react-native-picker/picker';
 import {tabelStyles as styles} from '../../styles/tabelStyles';
 import {useNavigation, useFocusEffect} from '@react-navigation/native';
-import {StackNavigationProp} from '@react-navigation/stack';
-import {RootStackParamList} from '../../navigation/types';
+import type {StackNavigationProp} from '@react-navigation/stack';
+import type {
+  RootStackParamList,
+  TrainHours as TrainHoursType,
+} from '../../navigation/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {TrainHours} from '../../navigation/types';
 import * as Animatable from 'react-native-animatable';
 import Icon from 'react-native-vector-icons/Ionicons';
 import API_BASE_URL from '../../config';
 
+// Enable layout animation khusus Android
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+// Pilihan jumlah item per halaman
 const pageSizeOptions = [5, 10, 50, 100];
 
+// Type untuk navigasi stack
 type NavigationProp = StackNavigationProp<RootStackParamList, 'TrainHours'>;
 
-export default function Data() {
+const TrainHoursScreen: React.FC = () => {
+  // State hooks
   const navigation = useNavigation<NavigationProp>();
-  const [data, setData] = useState<TrainHours[]>([]);
+  const [data, setData] = useState<TrainHoursType[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -41,40 +47,50 @@ export default function Data() {
   const [pageSize, setPageSize] = useState(10);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Ambil data dari API trainHours
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch(`${API_BASE_URL}/trainHours`);
       const json = await res.json();
-      const arr = Array.isArray(json) ? json : json.data.data || [];
+      console.log('RAW fetch json:', json);
+
+      // Handle respons agar selalu array
+      const arr = Array.isArray(json.data) ? json.data : [];
       setData(arr);
     } catch (err) {
       console.error('Fetch error:', err);
+      setData([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, []);
 
+  // Ambil data pertama kali saat komponen mount
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
+  // Fetch data setiap screen focus
   useFocusEffect(
     useCallback(() => {
       fetchData();
     }, [fetchData]),
   );
 
+  // Handle refresh swipe-down
   const onRefresh = () => {
     setRefreshing(true);
     fetchData();
   };
 
+  // Expand/collapse detail data card
   const toggleExpand = (id: number) => {
     setExpandedId(prev => (prev === id ? null : id));
   };
 
+  // Filter data berdasarkan pencarian
   const filteredData = data.filter(item => {
     const q = searchQuery.toLowerCase();
     return (
@@ -85,22 +101,26 @@ export default function Data() {
     );
   });
 
+  // Pagination logika
   const totalPages = Math.ceil(filteredData.length / pageSize);
   const paginatedData = filteredData.slice(
     (page - 1) * pageSize,
     page * pageSize,
   );
 
+  // Reset page jika search atau pageSize berubah
   useEffect(() => {
     if (totalPages > 0 && page > totalPages) {
       setPage(1);
     }
   }, [searchQuery, pageSize, totalPages, page]);
 
+  // Tutup expand card jika search/page berubah
   useEffect(() => {
     setExpandedId(null);
   }, [searchQuery, page, pageSize]);
 
+  // Tampilkan loading spinner jika masih loading dan bukan saat refreshing
   if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.center}>
@@ -109,21 +129,41 @@ export default function Data() {
     );
   }
 
+  // Navigasi ke halaman EditTrainHours
+  const handleEdit = (item: TrainHoursType) => {
+    Alert.alert(
+      'Edit Train Hours',
+      `Apakah Anda ingin mengedit data untuk ${item.employee_name}?`,
+      [
+        {text: 'Batal', style: 'cancel'},
+        {
+          text: 'Edit',
+          onPress: () => {
+            navigation.navigate('EditTrainHours', {id: item.id});
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <SafeAreaView style={{flex: 1, paddingHorizontal: 8, paddingTop: 20}}>
+      {/* Judul halaman */}
       <Text style={styles.pageTitle}>Train Hours</Text>
 
+      {/* Search input */}
       <TextInput
         placeholder="Cari Nama, Position, Site..."
         value={searchQuery}
         onChangeText={text => {
           setSearchQuery(text);
-          setPage(1);
+          setPage(1); // Reset ke halaman 1 setelah search
         }}
         style={styles.searchInput}
         {...(Platform.OS === 'ios' ? {clearButtonMode: 'while-editing'} : {})}
       />
 
+      {/* Picker untuk memilih jumlah data per halaman */}
       <View style={styles.pickerContainer}>
         <Text style={styles.pickerLabel}>Items per page:</Text>
         <View style={styles.pickerWrapper}>
@@ -131,7 +171,7 @@ export default function Data() {
             selectedValue={pageSize}
             onValueChange={itemValue => {
               setPageSize(itemValue);
-              setPage(1);
+              setPage(1); // Reset ke halaman 1 setelah ganti pageSize
             }}
             style={styles.picker}
             dropdownIconColor="#1E90FF"
@@ -143,16 +183,18 @@ export default function Data() {
         </View>
       </View>
 
+      {/* List data */}
       <FlatList
         data={paginatedData}
         keyExtractor={item => item.id.toString()}
-        renderItem={({item, index}) => {
+        renderItem={({item}) => {
           const expanded = item.id === expandedId;
           return (
             <Animatable.View
               animation={expanded ? 'fadeInDown' : 'fadeInUp'}
               duration={350}
               style={[styles.cardContainer, expanded && styles.cardExpanded]}>
+              {/* Header card */}
               <TouchableOpacity
                 onPress={() => toggleExpand(item.id)}
                 style={{paddingBottom: expanded ? 0 : 8}}
@@ -185,6 +227,8 @@ export default function Data() {
                   </View>
                 </View>
               </TouchableOpacity>
+
+              {/* Detail card, tampil jika expanded */}
               {expanded && (
                 <View style={styles.cardDetail}>
                   <Text style={styles.cardDetailText}>
@@ -211,6 +255,14 @@ export default function Data() {
                       : 0}
                     %
                   </Text>
+                  {/* Tombol edit */}
+                  <View style={styles.cardActionRow}>
+                    <TouchableOpacity
+                      style={styles.editButton}
+                      onPress={() => handleEdit(item)}>
+                      <Text style={styles.actionButtonText}>Edit</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               )}
             </Animatable.View>
@@ -228,6 +280,7 @@ export default function Data() {
         contentContainerStyle={{paddingBottom: 22}}
       />
 
+      {/* Pagination navigasi */}
       <View style={styles.paginationContainer}>
         <TouchableOpacity
           onPress={() => setPage(p => Math.max(1, p - 1))}
@@ -251,4 +304,6 @@ export default function Data() {
       </View>
     </SafeAreaView>
   );
-}
+};
+
+export default TrainHoursScreen;

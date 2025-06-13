@@ -1,6 +1,8 @@
 import React from 'react';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {RootStackParamList} from './types';
+
+// Import semua screens yang kamu gunakan
 import AuthLoadingScreen from '../screens/AuthLoadingScreen';
 import LoginScreen from '../screens/LoginScreen';
 import FullDashboard from '../screens/FullDashboard';
@@ -18,6 +20,7 @@ import EditTrainHours from '../screens/trainhours/EditTrainHours';
 import Mop from '../screens/mop/Mop';
 import AddMop from '../screens/mop/AddMop';
 
+// Stack inisialisasi dengan tipe RootStackParamList
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 const AppNavigator = () => (

@@ -12,6 +12,7 @@ import {
   Keyboard,
   UIManager,
   Platform,
+  Button,
 } from 'react-native';
 import axios from 'axios';
 import RNPickerSelect from 'react-native-picker-select';
@@ -820,16 +821,7 @@ const EditDataMentoring = ({route}) => {
             {observasiPoints.jsx}
             {mentoringPoints.jsx}
 
-            <TouchableOpacity
-              style={styles.submitButton}
-              onPress={handleSubmit}
-              disabled={loading}>
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.submitButtonText}>Simpan Perubahan</Text>
-              )}
-            </TouchableOpacity>
+            <Button title="Simpan" onPress={handleSubmit} />
           </View>
         </ScrollView>
       </TouchableWithoutFeedback>

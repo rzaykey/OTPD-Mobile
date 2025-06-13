@@ -19,11 +19,15 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import API_BASE_URL from '../../config';
 
+// Enable layout animation pada Android
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+/**
+ * Komponen kartu collapsible untuk grouping form section
+ */
 const CollapsibleCard = ({title, children}) => {
   const [expanded, setExpanded] = useState(true);
   const toggleExpand = () => {
@@ -40,17 +44,20 @@ const CollapsibleCard = ({title, children}) => {
   );
 };
 
+/**
+ * Halaman EditTrainHours
+ */
 const EditTrainHours = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const {id} = route.params;
 
-  // Form state
+  // STATE: data form utama
   const [formData, setFormData] = useState({
     jde_no: '',
     employee_name: '',
     position: '',
-    training_type: '',
+    training_type: '', // gunakan ID
     unit_class: '',
     unit_type: '',
     code: '',
@@ -64,7 +71,7 @@ const EditTrainHours = () => {
     date_activity: '',
   });
 
-  // Dropdowns
+  // STATE: Dropdown & opsinya
   const [trainingTypeOptions, setTrainingTypeOptions] = useState([]);
   const [trainingTypeOpen, setTrainingTypeOpen] = useState(false);
   const [trainingTypeValue, setTrainingTypeValue] = useState(null);
@@ -72,11 +79,11 @@ const EditTrainHours = () => {
   const [unitTypeOptions, setUnitTypeOptions] = useState([]);
   const [unitTypeOpen, setUnitTypeOpen] = useState(false);
 
-  const [classUnitArr, setClassUnitArr] = useState([]); // Semua class dari API
+  const [classUnitArr, setClassUnitArr] = useState([]);
   const [filteredClassUnitOptions, setFilteredClassUnitOptions] = useState([]);
   const [unitClassOpen, setUnitClassOpen] = useState(false);
 
-  const [allCodeUnitArr, setAllCodeUnitArr] = useState([]); // Semua code dari API
+  const [allCodeUnitArr, setAllCodeUnitArr] = useState([]);
   const [codeOptions, setCodeOptions] = useState([]);
   const [codeOpen, setCodeOpen] = useState(false);
 
@@ -94,11 +101,13 @@ const EditTrainHours = () => {
   ]);
   const [batchOpen, setBatchOpen] = useState(false);
 
-  // Date picker
+  // STATE: Date picker
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
 
-  // Helper
+  /**
+   * Helper untuk ambil session/token dari async storage
+   */
   const getSession = async () => {
     const token = await AsyncStorage.getItem('userToken');
     const userString = await AsyncStorage.getItem('userData');
@@ -107,76 +116,76 @@ const EditTrainHours = () => {
     return {token, user, site};
   };
 
-  // Initial Load
+  /**
+   * Ambil data master (dropdown) & detail edit (by id)
+   */
   useEffect(() => {
-    const fetchInitialData = async () => {
+    let cancel = false;
+    const fetchData = async () => {
       try {
         const {token, user, site} = await getSession();
         if (!token || !user) {
           Alert.alert('Error', 'Session habis. Silakan login ulang.');
           return;
         }
-        // 1. Master Data
+        // 1. Ambil master data
         const master = await axios.get(`${API_BASE_URL}/trainHours/create`, {
           headers: {Authorization: `Bearer ${token}`},
         });
-        if (master.data.status) {
-          const emp = master.data.data.employeeAuth;
-          setFormData(prev => ({
-            ...prev,
-            jde_no: emp.EmployeeId || '',
-            employee_name: emp.EmployeeName || '',
-            position: emp.JobTtlName || emp.PositionName || '',
-            site: site || '',
-          }));
-
-          // Class Unit all
-          const classUnitArr = (master.data.data.classUnit || []).map(item => ({
-            label: item.model,
-            value: String(item.id),
-            type: item.type,
-            class: item.class,
-          }));
-          setClassUnitArr(classUnitArr);
-
-          // Type Unit all
-          const typeUnitArr = (master.data.data.typeUnit || []).map(item => ({
-            label: item.class,
-            value: item.class,
-          }));
-          setUnitTypeOptions(typeUnitArr);
-
-          // Code Unit all
-          const codeUnitArr = (master.data.data.codeUnit || []).map(item => ({
-            label: item.no_unit || item.NO_UNIT || item.code,
-            value: String(item.id), // id sebagai value
-            fid_model: String(item.fid_model),
-          }));
-          setAllCodeUnitArr(codeUnitArr);
-
-          // KPI all
-          const kpiArr = (master.data.data.kpi || []).map(item => ({
-            label: item.kpi,
-            value: String(item.id),
-          }));
-          setTrainingTypeOptions(kpiArr);
-        }
-
-        // 2. Data Train Hours by id
+        // 2. Ambil data detail yang mau diedit
         const detail = await axios.get(`${API_BASE_URL}/trainHours/${id}`, {
           headers: {Authorization: `Bearer ${token}`},
         });
+
+        if (cancel) return;
+
+        // Mapping data master
+        const typeUnitArr = (master.data.data.typeUnit || []).map(item => ({
+          label: item.class,
+          value: String(item.id),
+        }));
+        setUnitTypeOptions(typeUnitArr);
+
+        const classUnitArr = (master.data.data.classUnit || []).map(item => ({
+          label: item.model,
+          value: String(item.id),
+          type: item.type,
+          class: String(item.class),
+        }));
+        setClassUnitArr(classUnitArr);
+
+        const codeUnitArr = (master.data.data.codeUnit || []).map(item => ({
+          label: item.no_unit || item.NO_UNIT || item.code,
+          value: String(item.id),
+          fid_model: String(item.fid_model),
+        }));
+        setAllCodeUnitArr(codeUnitArr);
+
+        const kpiArr = (master.data.data.kpi || []).map(item => ({
+          label: item.kpi,
+          value: String(item.id),
+        }));
+        setTrainingTypeOptions(kpiArr);
+
+        // SET default data edit (detail)
         if (detail.data.status) {
           const d = detail.data.data;
-          // SET FORM DATA (semua harus string!)
+          // Cari value training_type berdasar ID
+          const selectedTraining = kpiArr.find(
+            item => String(item.value) === String(d.training_type),
+          );
+          setTrainingTypeValue(
+            selectedTraining ? selectedTraining.value : null,
+          );
+
           setFormData({
             jde_no: d.jde_no || '',
             employee_name: d.employee_name || '',
             position: d.position || '',
-            training_type: d.training_type || '', // label, bukan id
+            training_type: selectedTraining ? selectedTraining.value : '', // (ID)
             unit_class: d.unit_class ? String(d.unit_class) : '',
-            unit_type: d.unit_type || '',
-            code: d.code ? String(d.code) : '', // harus string (id)
+            unit_type: d.unit_type ? String(d.unit_type) : '',
+            code: d.code ? String(d.code) : '',
             batch: d.batch || '',
             plan_total_hm: d.plan_total_hm ? String(d.plan_total_hm) : '',
             hm_start: d.hm_start ? String(d.hm_start) : '',
@@ -187,25 +196,17 @@ const EditTrainHours = () => {
             date_activity: d.date_activity ? d.date_activity.split(' ')[0] : '',
           });
 
-          // Set dropdown default: filtered unit_class sesuai unit_type
+          // Filter dropdown sesuai data edit
           setFilteredClassUnitOptions(
-            classUnitArr.filter(item => item.class === d.unit_type),
+            classUnitArr.filter(
+              item => String(item.class) === String(d.unit_type),
+            ),
           );
-          // Set dropdown code sesuai unit_class
           setCodeOptions(
-            (master.data.data.codeUnit || [])
-              .map(item => ({
-                label: item.no_unit || item.NO_UNIT || item.code,
-                value: String(item.id),
-                fid_model: String(item.fid_model),
-              }))
-              .filter(code => code.fid_model === String(d.unit_class)),
+            codeUnitArr.filter(
+              code => String(code.fid_model) === String(d.unit_class),
+            ),
           );
-          // Set trainingTypeValue ke id sesuai value awal (cari by label)
-          const trainingOpt = (master.data.data.kpi || []).find(
-            item => item.kpi === d.training_type,
-          );
-          setTrainingTypeValue(trainingOpt ? String(trainingOpt.id) : null);
         } else {
           Alert.alert('Error', detail.data.message || 'Gagal ambil data.');
         }
@@ -214,16 +215,48 @@ const EditTrainHours = () => {
         Alert.alert('Error', 'Terjadi kesalahan saat ambil data awal');
       }
     };
-
-    fetchInitialData();
+    fetchData();
+    return () => {
+      cancel = true;
+    };
   }, [id]);
 
-  // Change handler
+  /**
+   * Sync cascading dropdown: classUnit sesuai unit_type
+   */
+  useEffect(() => {
+    if (formData.unit_type && classUnitArr.length > 0) {
+      setFilteredClassUnitOptions(
+        classUnitArr.filter(
+          item => String(item.class) === String(formData.unit_type),
+        ),
+      );
+    }
+  }, [formData.unit_type, classUnitArr]);
+
+  /**
+   * Sync cascading dropdown: code sesuai unit_class
+   */
+  useEffect(() => {
+    if (formData.unit_class && allCodeUnitArr.length > 0) {
+      setCodeOptions(
+        allCodeUnitArr.filter(
+          code => String(code.fid_model) === String(formData.unit_class),
+        ),
+      );
+    }
+  }, [formData.unit_class, allCodeUnitArr]);
+
+  /**
+   * Handle perubahan nilai field
+   */
   const handleChange = (name, value) => {
     setFormData(prev => ({...prev, [name]: value}));
   };
 
-  // Date change
+  /**
+   * Handle perubahan tanggal dari DateTimePicker
+   */
   const handleDateChange = (_event, selected) => {
     const currentDate = selected || selectedDate;
     setShowDatePicker(Platform.OS === 'ios');
@@ -232,7 +265,9 @@ const EditTrainHours = () => {
     handleChange('date_activity', formatted);
   };
 
-  // Hitung total_hm & progres otomatis jika hm_start/hm_end diubah
+  /**
+   * Hitung otomatis total_hm & progres saat hm_start/hm_end berubah
+   */
   useEffect(() => {
     const start = Number(formData.hm_start) || 0;
     const end = Number(formData.hm_end) || 0;
@@ -244,40 +279,36 @@ const EditTrainHours = () => {
     }));
   }, [formData.hm_start, formData.hm_end, formData.plan_total_hm]);
 
-  // Handler cascading dropdown
+  /**
+   * Handler cascading dropdown (UnitType, UnitClass)
+   */
   const onChangeUnitType = val => {
     handleChange('unit_type', val);
-    // Filter class unit
-    const filtered = classUnitArr.filter(item => item.class === val);
-    setFilteredClassUnitOptions(filtered);
     handleChange('unit_class', '');
     handleChange('code', '');
-    setCodeOptions([]);
   };
   const onChangeUnitClass = val => {
     handleChange('unit_class', val);
-    // Filter code by fid_model
-    const filteredCode = allCodeUnitArr.filter(
-      code => String(code.fid_model) === String(val),
-    );
-    setCodeOptions(filteredCode);
     handleChange('code', '');
   };
 
-  // Handler dropdown KPI/training_type (ambil label)
+  /**
+   * Handler untuk dropdown KPI/training_type
+   */
   const onChangeTrainingType = val => {
     setTrainingTypeValue(val);
-    const selected = trainingTypeOptions.find(i => i.value === val);
-    handleChange('training_type', selected ? selected.label : '');
+    handleChange('training_type', val);
   };
 
-  // UPDATE submit
+  /**
+   * Validasi dan submit update data ke backend
+   */
   const handleSubmit = async () => {
     const requiredFields = [
       'jde_no',
       'employee_name',
       'position',
-      'training_type',
+      'training_type', // WAJIB: id KPI
       'unit_class',
       'unit_type',
       'code',
@@ -305,6 +336,8 @@ const EditTrainHours = () => {
         Alert.alert('Error', 'Token tidak ditemukan. Silakan login ulang.');
         return;
       }
+      console.log('Training type yang dikirim:', formData.training_type);
+
       const response = await axios.put(
         `${API_BASE_URL}/trainHours/${id}`,
         formData,
@@ -345,7 +378,8 @@ const EditTrainHours = () => {
         keyboardShouldPersistTaps="handled"
         extraScrollHeight={120}>
         <Text style={addDailyAct.header}>EDIT TRAIN HOURS</Text>
-        {/* Employee */}
+
+        {/* Section: Employee */}
         <CollapsibleCard title="Employee Info">
           <Text style={addDailyAct.label}>JDE No</Text>
           <TextInput
@@ -373,7 +407,7 @@ const EditTrainHours = () => {
           />
         </CollapsibleCard>
 
-        {/* Training */}
+        {/* Section: Training */}
         <CollapsibleCard title="Training Info">
           <Text style={addDailyAct.label}>Training Type</Text>
           <DropDownPicker
@@ -382,7 +416,10 @@ const EditTrainHours = () => {
             value={trainingTypeValue}
             items={trainingTypeOptions}
             setOpen={setTrainingTypeOpen}
-            setValue={onChangeTrainingType}
+            setValue={val => {
+              setTrainingTypeValue(val());
+              handleChange('training_type', val());
+            }}
             setItems={setTrainingTypeOptions}
             placeholder="Pilih Training Type"
             searchable
@@ -408,7 +445,7 @@ const EditTrainHours = () => {
           />
         </CollapsibleCard>
 
-        {/* Unit */}
+        {/* Section: Unit */}
         <CollapsibleCard title="Unit Info">
           <Text style={addDailyAct.label}>Unit Type</Text>
           <DropDownPicker
@@ -471,7 +508,7 @@ const EditTrainHours = () => {
           />
         </CollapsibleCard>
 
-        {/* Hours */}
+        {/* Section: Hours */}
         <CollapsibleCard title="Hour Info">
           <Text style={addDailyAct.label}>Plan Total HM</Text>
           <TextInput
@@ -512,6 +549,7 @@ const EditTrainHours = () => {
           />
         </CollapsibleCard>
 
+        {/* Section: Tanggal */}
         <CollapsibleCard title="Tanggal">
           <Text style={addDailyAct.label}>Date Activity</Text>
           <TouchableOpacity onPress={() => setShowDatePicker(true)}>
