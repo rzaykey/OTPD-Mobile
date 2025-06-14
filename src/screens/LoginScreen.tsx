@@ -65,7 +65,6 @@ const LoginScreen = ({navigation}: Props) => {
       password: password.trim(),
     };
     // Debug payload (hapus di produksi)
-    // console.log('Payload yang dikirim ke backend:', payload);
 
     try {
       // Kirim ke API backend
@@ -77,7 +76,6 @@ const LoginScreen = ({navigation}: Props) => {
 
       const data = await response.json();
       // Debug response (hapus di produksi)
-      // console.log('Login response:', data);
 
       const token = data.access_token;
       const user = data.user;
@@ -96,7 +94,6 @@ const LoginScreen = ({navigation}: Props) => {
       }
     } catch (error) {
       // Jika server tidak bisa diakses
-      // console.error('Login Error:', error);
       Alert.alert('Error', 'Tidak dapat terhubung ke server');
     } finally {
       setLoading(false);

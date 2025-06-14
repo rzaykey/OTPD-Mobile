@@ -273,8 +273,6 @@ const AddDailyActivity = () => {
         value: act.id,
       }));
     setActivityOptions(filtered);
-    // DEBUG LOG:
-    console.log('[DEBUG] filterActivityByKpi:', {kpiId, filterSite, filtered});
   };
 
   // ====== Handler ganti KPI (dropdown) ======
@@ -394,7 +392,6 @@ const AddDailyActivity = () => {
 
   // DEBUG LOG: lihat apa isi activityOptions
   useEffect(() => {
-    console.log('[DEBUG] activityOptions:', activityOptions);
   }, [activityOptions]);
 
   // ====== UI Render ======

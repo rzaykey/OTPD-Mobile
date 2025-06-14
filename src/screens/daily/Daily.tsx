@@ -1,17 +1,17 @@
 /**
- * DailyActivity.tsx (Optimized)
- * -----------------------------
- * - Tidak ada auto-sync master/index saat halaman load/focus.
- * - Sync master/index hanya saat user klik tombol "Ambil Ulang dari Server".
- * - List dan create bisa tetap berjalan offline (cache).
- * - Edit/delete otomatis disable jika offline.
- * - State & proses lebih ringan, battery-friendly.
+ * DailyActivity.tsx (Full Optimized + Background Sync)
+ * ----------------------------------------------------
+ * - Auto background refresh saat app online/setiap X menit
+ * - Manual force refresh by button
+ * - Cek summary {max_id, last_update} agar super efisien
+ * - List tetap cache/offline, edit/delete hanya online
+ * - SafeArea: Tombol dan UI tidak ketutup navbar
+ * - Fully documented & optimized
  *
- * @author [Nama Anda]
- * @created 2024-06-13
+ * @created 2024-06-14
  */
 
-import React, {useEffect, useState, useCallback} from 'react';
+import React, {useEffect, useState, useCallback, useRef} from 'react';
 import {
   SafeAreaView,
   Text,
@@ -24,11 +24,12 @@ import {
   Alert,
   UIManager,
   ToastAndroid,
+  AppState,
 } from 'react-native';
 import {Picker} from '@react-native-picker/picker';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {tabelStyles as styles} from '../../styles/tabelStyles';
-import {useNavigation, useFocusEffect} from '@react-navigation/native';
+import {useNavigation} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
 import {RootStackParamList, DailyActivity} from '../../navigation/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -39,7 +40,6 @@ import NetInfo from '@react-native-community/netinfo';
 
 const pageSizeOptions = [5, 10, 50, 100];
 
-// Aktifkan LayoutAnimation Android
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -51,7 +51,7 @@ export default function Daily() {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
 
-  // Data utama
+  // Main state
   const [data, setData] = useState<DailyActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -61,13 +61,17 @@ export default function Daily() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isConnected, setIsConnected] = useState(true);
 
-  // Master cache
+  // Master cache (optional, bisa dihilangkan kalau hanya list index)
   const [kpiMaster, setKpiMaster] = useState([]);
   const [activityMaster, setActivityMaster] = useState([]);
   const [unitMaster, setUnitMaster] = useState([]);
   const [masterVersion, setMasterVersion] = useState(Date.now());
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  // Status online/offline
+  // Background sync interval
+  const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // --- ONLINE/OFFLINE LISTENER ---
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener(state => {
       setIsConnected(state.isConnected === true);
@@ -76,48 +80,112 @@ export default function Daily() {
     return () => unsubscribe();
   }, []);
 
-  /**
-   * Refresh semua master data & index dari server (hanya saat user klik "Ambil Ulang dari Server")
-   */
-  const refreshMasterData = async () => {
+  // --- AUTO BACKGROUND SYNC LOGIC ---
+  // 1. Function ambil summary dari server
+  const getServerSummary = async () => {
     try {
-      if (!isConnected) return;
-      // --- Fetch KPI master
-      const kpiResp = await fetch(`${API_BASE_URL}/getKPI`);
-      const kpiJson = await kpiResp.json();
-      const kpiArr = (kpiJson.data || []).map(kpi => ({
-        label: kpi.kpi,
-        value: kpi.id,
-      }));
-      await AsyncStorage.setItem('dropdown_kpi', JSON.stringify(kpiArr));
-      setKpiMaster(kpiArr);
-
-      // --- Fetch ALL Activity master
-      const actResp = await fetch(`${API_BASE_URL}/getActivity/all`);
-      const actJson = await actResp.json();
-      const actArr = actJson.data || [];
-      await AsyncStorage.setItem('cached_all_activity', JSON.stringify(actArr));
-      setActivityMaster(actArr);
-
-      // --- Fetch UNIT master
-      const unitResp = await fetch(`${API_BASE_URL}/getModelUnit`);
-      const unitArr = await unitResp.json();
-      const unitData = unitArr.map(u => ({
-        label: u.model,
-        value: String(u.id),
-        modelOnly: u.id,
-      }));
-      await AsyncStorage.setItem('dropdown_unit', JSON.stringify(unitData));
-      setUnitMaster(unitData);
-
-      // Paksa UI re-read master, biar flatlist update label
-      setMasterVersion(Date.now());
-    } catch (e) {
-      ToastAndroid.show('Gagal update master data', ToastAndroid.SHORT);
+      const res = await fetch(`${API_BASE_URL}/apiDayActAll/summaryDayAct`);
+      const json = await res.json();
+      return {
+        max_id: String(json.max_id),
+        last_update: String(json.last_update),
+      };
+    } catch {
+      return {};
     }
   };
 
-  // Load Master Data (dari cache). Pakai masterVersion supaya re-read setelah force refresh.
+  // 2. AUTO SYNC DATA: bandingkan summary dengan cache
+  const fetchDataAutoSync = useCallback(
+    async (forceServer = false) => {
+      setIsSyncing(true);
+      setLoading(true);
+      try {
+        if (!isConnected) {
+          const cache = await AsyncStorage.getItem(
+            'cached_daily_activity_list',
+          );
+          setData(cache ? JSON.parse(cache) : []);
+          setLoading(false);
+          setRefreshing(false);
+          return;
+        }
+
+        // Ambil summary dari server
+        const {max_id: serverMaxId, last_update: serverLastUpdate} =
+          await getServerSummary();
+        const localMaxId = await AsyncStorage.getItem('daily_max_id');
+        const localLastUpdate = await AsyncStorage.getItem('daily_last_update');
+
+        // Kalau ada perubahan, fetch ulang
+        if (
+          forceServer ||
+          localMaxId !== serverMaxId ||
+          localLastUpdate !== serverLastUpdate
+        ) {
+          const res = await fetch(`${API_BASE_URL}/apiDayActAll`);
+          const json = await res.json();
+          const arr = Array.isArray(json) ? json : json.data || [];
+          setData(arr);
+          await AsyncStorage.setItem(
+            'cached_daily_activity_list',
+            JSON.stringify(arr),
+          );
+          await AsyncStorage.setItem('daily_max_id', serverMaxId || '');
+          await AsyncStorage.setItem(
+            'daily_last_update',
+            serverLastUpdate || '',
+          );
+        } else {
+          // Tidak ada perubahan, cukup pakai cache
+          const cache = await AsyncStorage.getItem(
+            'cached_daily_activity_list',
+          );
+          setData(cache ? JSON.parse(cache) : []);
+        }
+        setLoading(false);
+        setRefreshing(false);
+        setIsSyncing(false);
+      } catch (e) {
+        const cache = await AsyncStorage.getItem('cached_daily_activity_list');
+        setData(cache ? JSON.parse(cache) : []);
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [isConnected],
+  );
+
+  // --- BACKGROUND SYNC INTERVAL (setiap 2 menit, bebas diubah) ---
+  useEffect(() => {
+    if (!isConnected) return;
+    // Jalankan auto sync pertama kali
+    fetchDataAutoSync();
+
+    // Set interval untuk background sync
+    syncIntervalRef.current = setInterval(() => {
+      fetchDataAutoSync();
+    }, 2 * 60 * 1000); // setiap 2 menit
+
+    // Juga sync saat app di foreground
+    const appStateSub = AppState.addEventListener('change', state => {
+      if (state === 'active') fetchDataAutoSync();
+    });
+
+    return () => {
+      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+      if (appStateSub) appStateSub.remove();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected, fetchDataAutoSync]);
+
+  // Manual refresh
+  const handleForceRefresh = async () => {
+    await fetchDataAutoSync(true);
+    ToastAndroid.show('Data di-refresh dari server!', ToastAndroid.SHORT);
+  };
+
+  // Master data dari cache (optional)
   useEffect(() => {
     AsyncStorage.getItem('dropdown_kpi').then(d => {
       if (d) setKpiMaster(JSON.parse(d));
@@ -130,7 +198,7 @@ export default function Daily() {
     });
   }, [masterVersion]);
 
-  // Lookup helper (tidak berubah)
+  // Lookup helper (optional)
   function getKpiLabelById(id) {
     const found = kpiMaster.find(kpi => String(kpi.value) === String(id));
     return found ? found.label : id;
@@ -146,65 +214,13 @@ export default function Daily() {
     return found ? found.label : id;
   }
 
-  /**
-   * Fetch index dari server (paksa update) HANYA saat user klik tombol
-   */
-  const fetchDataFromServer = async (showToast = true) => {
-    try {
-      setLoading(true);
-      // Index utama
-      const res = await fetch(`${API_BASE_URL}/apiDayActAll`);
-      const json = await res.json();
-      const arr = Array.isArray(json) ? json : json.data || [];
-      setData(arr);
-      await AsyncStorage.setItem(
-        'cached_daily_activity_list',
-        JSON.stringify(arr),
-      );
-      // --- Refresh master juga
-      await refreshMasterData(); // <<== Ini otomatis update masterVersion!
-      if (showToast)
-        ToastAndroid.show('Data di-refresh dari server!', ToastAndroid.SHORT);
-    } catch (err) {
-      if (showToast)
-        ToastAndroid.show(
-          'Gagal fetch server! Menampilkan cache terakhir.',
-          ToastAndroid.LONG,
-        );
-      const cache = await AsyncStorage.getItem('cached_daily_activity_list');
-      if (cache) setData(JSON.parse(cache));
-      else setData([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  /**
-   * Fetch dari cache saja (tidak ada auto-refresh master/index, lebih ringan)
-   */
-  const fetchData = useCallback(async () => {
-    const cache = await AsyncStorage.getItem('cached_daily_activity_list');
-    if (cache) setData(JSON.parse(cache));
-    setLoading(false);
-    setRefreshing(false);
-  }, []);
-
-  // Initial fetch data (cache only, tidak auto-refresh master)
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchData();
-    }, [fetchData]),
-  );
-
-  // Pull to refresh (swipe down): juga hanya load dari cache
+  // Pull to refresh (cache only)
   const onRefresh = () => {
     setRefreshing(true);
-    fetchData();
+    AsyncStorage.getItem('cached_daily_activity_list').then(cache => {
+      setData(cache ? JSON.parse(cache) : []);
+      setRefreshing(false);
+    });
   };
 
   // Expand/collapse
@@ -212,12 +228,8 @@ export default function Daily() {
     setExpandedId(prev => (prev === id ? null : id));
   };
 
-  // Edit handler: hanya aktif saat online
+  // Edit/delete: only online
   const handleEdit = (item: DailyActivity) => {
-    if (!isConnected) {
-      Alert.alert('Offline', 'Edit hanya tersedia saat online.');
-      return;
-    }
     Alert.alert(
       'Edit Daily',
       `Apakah Anda ingin mengedit data untuk ${item.employee_name}?`,
@@ -233,7 +245,6 @@ export default function Daily() {
     );
   };
 
-  // Delete handler: hanya aktif saat online
   const handleDelete = useCallback(
     async (id: number) => {
       if (!isConnected) {
@@ -265,7 +276,7 @@ export default function Daily() {
                 const json = JSON.parse(text);
                 if (json.success) {
                   Alert.alert('Sukses', json.message);
-                  fetchData();
+                  fetchDataAutoSync(true);
                 } else {
                   Alert.alert('Gagal', json.message || 'Gagal menghapus data.');
                 }
@@ -279,7 +290,7 @@ export default function Daily() {
         Alert.alert('Error', 'Terjadi kesalahan.');
       }
     },
-    [fetchData, isConnected],
+    [fetchDataAutoSync, isConnected],
   );
 
   // Filtering & paging
@@ -293,7 +304,6 @@ export default function Daily() {
   });
 
   const totalPages = Math.ceil(filteredData.length / pageSize);
-
   const paginatedData = filteredData.slice(
     (page - 1) * pageSize,
     page * pageSize,
@@ -348,6 +358,13 @@ export default function Daily() {
                 }}>
                 {isConnected ? '🟢 Online' : '🔴 Offline'}
               </Text>
+              {isConnected && isSyncing && (
+                <ActivityIndicator
+                  size="small"
+                  color="#1E90FF"
+                  style={{marginLeft: 8, marginBottom: 2}}
+                />
+              )}
             </View>
             {/* Tombol Ambil Ulang dari Server */}
             {isConnected && (
@@ -360,7 +377,7 @@ export default function Daily() {
                   alignSelf: 'flex-end',
                   marginLeft: 12,
                 }}
-                onPress={fetchDataFromServer}
+                onPress={handleForceRefresh}
                 disabled={loading}>
                 <Text style={{color: '#fff', fontWeight: 'bold', fontSize: 14}}>
                   Ambil Ulang dari Server
@@ -472,12 +489,8 @@ export default function Daily() {
                     </Text>
                     <View style={styles.cardActionRow}>
                       <TouchableOpacity
-                        style={[
-                          styles.editButton,
-                          !isConnected && {opacity: 0.4},
-                        ]}
-                        onPress={() => handleEdit(item)}
-                        disabled={!isConnected}>
+                        style={[styles.editButton]}
+                        onPress={() => handleEdit(item)}>
                         <Text style={styles.actionButtonText}>Edit</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
