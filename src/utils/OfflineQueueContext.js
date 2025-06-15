@@ -1,66 +1,79 @@
-import React, {createContext, useState, useEffect, useCallback} from 'react';
-import {getOfflineQueueCount, pushOfflineQueue} from './offlineQueueHelper';
+import React, {
+  createContext,
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+} from 'react';
 import NetInfo from '@react-native-community/netinfo';
+import {
+  pushOfflineQueue,
+  getOfflineQueueCount,
+  clearOfflineQueue,
+} from './offlineQueueHelper';
 
-// [1] Key dan endpoint queue mentoring (bisa tambah queue lain)
-const QUEUES = [
-  {
-    key: 'mentoring_queue_offline',
-    endpoint: '/mentoring/store',
-  },
-  // Tambah lagi kalau mau queue lain:
-  // { key: 'daily_queue_offline', endpoint: '/daily/store' },
-];
+export const OfflineQueueContext = createContext();
 
-// [2] Context shape
-export const OfflineQueueContext = createContext({
-  queueCount: 0,
-  syncing: false,
-  refreshQueueCount: () => {},
-  pushQueue: () => {},
-});
-
-// [3] Provider
 export const OfflineQueueProvider = ({children}) => {
-  const [queueCount, setQueueCount] = useState(0);
+  const mentoringKey = 'mentoring_queue_offline';
+  const dailyKey = 'daily_queue_offline';
+
+  const [mentoringQueueCount, setMentoringQueueCount] = useState(0);
+  const [dailyQueueCount, setDailyQueueCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
 
-  // Refresh count dari semua queue (bisa dimodif untuk multiple queue)
   const refreshQueueCount = useCallback(async () => {
-    let total = 0;
-    for (const q of QUEUES) {
-      const count = await getOfflineQueueCount(q.key);
-      total += count;
-    }
-    setQueueCount(total);
+    setMentoringQueueCount(await getOfflineQueueCount(mentoringKey));
+    setDailyQueueCount(await getOfflineQueueCount(dailyKey));
   }, []);
 
-  // Push semua queue yang ada
-  const pushQueue = useCallback(async () => {
+  const pushMentoringQueue = useCallback(async () => {
     setSyncing(true);
-    for (const q of QUEUES) {
-      await pushOfflineQueue(q.key, q.endpoint);
-    }
-    await refreshQueueCount();
+    await pushOfflineQueue(mentoringKey, '/mentoring/store');
     setSyncing(false);
+    refreshQueueCount();
   }, [refreshQueueCount]);
 
-  // Pantau koneksi untuk auto-push, dan selalu refresh badge saat mount
-  useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener(state => {
-      if (state.isConnected) {
-        pushQueue();
-      }
-    });
+  const pushDailyQueue = useCallback(async () => {
+    setSyncing(true);
+    await pushOfflineQueue(dailyKey, '/dayActivities');
+    setSyncing(false);
     refreshQueueCount();
-    return unsubscribe;
-  }, [pushQueue, refreshQueueCount]);
+  }, [refreshQueueCount]);
 
-  // Kalau perlu: listen perubahan (misal window.dispatchEvent), boleh tambahkan event listener di sini
+  // AUTO-PUSH saat online
+  const lastIsConnected = useRef(true);
+  useEffect(() => {
+    refreshQueueCount();
+    const unsubscribe = NetInfo.addEventListener(async state => {
+      if (lastIsConnected.current === false && state.isConnected === true) {
+        await pushMentoringQueue();
+        await pushDailyQueue();
+      }
+      lastIsConnected.current = state.isConnected;
+    });
+    return () => unsubscribe();
+  }, [pushMentoringQueue, pushDailyQueue, refreshQueueCount]);
+
+  // Refresh count secara periodik (boleh dihapus jika ingin)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshQueueCount();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [refreshQueueCount]);
 
   return (
     <OfflineQueueContext.Provider
-      value={{queueCount, syncing, refreshQueueCount, pushQueue}}>
+      value={{
+        mentoringQueueCount,
+        dailyQueueCount,
+        syncing,
+        refreshQueueCount,
+        pushMentoringQueue,
+        pushDailyQueue,
+        clearOfflineQueue,
+      }}>
       {children}
     </OfflineQueueContext.Provider>
   );

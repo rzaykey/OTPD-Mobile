@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useState, useContext} from 'react';
 import {
   View,
   Text,
@@ -24,11 +24,16 @@ import API_BASE_URL from '../../config';
 import NetInfo from '@react-native-community/netinfo';
 import DropDownPicker from 'react-native-dropdown-picker';
 
-// --- UI/Anim Android
+import {addQueueOffline} from '../../utils/offlineQueueHelper';
+import {OfflineQueueContext} from '../../utils/OfflineQueueContext';
+
+// Enable layout animation for Android
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
+
+const MENTORING_QUEUE_KEY = 'mentoring_queue_offline';
 
 // --- Expandable Card
 const ToggleCard = ({title, children, defaultExpanded = true}) => {
@@ -52,6 +57,8 @@ const ToggleCard = ({title, children, defaultExpanded = true}) => {
 
 const AddDataMentoring = ({route}) => {
   const navigation = useNavigation();
+  const {pushMentoringQueue, mentoringQueueCount, syncing} =
+    useContext(OfflineQueueContext);
   const [loading, setLoading] = useState(true);
 
   // --- State
@@ -86,8 +93,6 @@ const AddDataMentoring = ({route}) => {
   const [area, setArea] = useState(null);
   const [points, setPoints] = useState({});
   const [isConnected, setIsConnected] = useState(true);
-  const [isPushingQueue, setIsPushingQueue] = useState(false);
-  const [offlineQueueCount, setOfflineQueueCount] = useState(0);
 
   // --- DropDownPicker State
   const [operatorOpen, setOperatorOpen] = useState(false);
@@ -115,21 +120,6 @@ const AddDataMentoring = ({route}) => {
     NetInfo.fetch().then(state => setIsConnected(state.isConnected === true));
     return () => unsubscribe();
   }, []);
-
-  // --- Pantau jumlah offline queue (setiap masuk page dan selesai push)
-  useEffect(() => {
-    const cekQueue = async () => {
-      try {
-        const q = await AsyncStorage.getItem('mentoring_queue_offline');
-        setOfflineQueueCount(q ? JSON.parse(q).length : 0);
-      } catch {
-        setOfflineQueueCount(0);
-      }
-    };
-    cekQueue();
-    const interval = setInterval(cekQueue, 5000);
-    return () => clearInterval(interval);
-  }, [isPushingQueue, loading]);
 
   // --- Prefill draft (checkbox indikator tetap walau offline)
   useEffect(() => {
@@ -343,6 +333,15 @@ const AddDataMentoring = ({route}) => {
     }
   };
 
+  const handleClear = async () => {
+    try {
+      await AsyncStorage.removeItem('mentoring_queue_offline');
+      Alert.alert('Sukses', 'Antrian offline mentoring sudah dihapus.');
+    } catch (err) {
+      Alert.alert('Gagal', 'Tidak bisa menghapus cache offline.');
+    }
+  };
+
   const handleSelectOperator = item => {
     setOperatorJDE(item.employeeId);
     setOperatorName(item.EmployeeName);
@@ -504,13 +503,11 @@ const AddDataMentoring = ({route}) => {
       </ToggleCard>
     );
   };
+
+  // --- SUBMIT (OFFLINE FIRST)
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // --- SUBMIT
   const handleSubmit = async () => {
-    if (isSubmitting) {
-      console.log('Prevented duplicate submit');
-      return;
-    }
+    if (isSubmitting) return;
     setIsSubmitting(true);
     try {
       setLoading(true);
@@ -567,33 +564,12 @@ const AddDataMentoring = ({route}) => {
           is_mentoring: detail.is_mentoring,
           note_observasi: detail.note_observasi || '',
         })),
-        _offline_id: Date.now() + '-' + Math.random().toString(36).slice(2, 9), // anti duplikat lokal
+        id_local: Date.now() + '_' + Math.random().toString(36).slice(2, 10), // anti duplikat lokal
       };
-      console.log('Will submit payload:', JSON.stringify(payload));
 
       if (!isConnected) {
-        const queueKey = 'mentoring_queue_offline';
-        const prev = await AsyncStorage.getItem(queueKey);
-        let arr = prev ? JSON.parse(prev) : [];
-        // Anti-duplikat
-        if (
-          arr.find(
-            item =>
-              JSON.stringify({...item, _offline_id: undefined}) ===
-              JSON.stringify({...payload, _offline_id: undefined}),
-          )
-        ) {
-          Alert.alert('Sudah Ada', 'Data ini sudah ada di antrian offline.');
-          setLoading(false);
-          return;
-        }
-        arr.push(payload);
-        await AsyncStorage.setItem(queueKey, JSON.stringify(arr));
-        const queue = await AsyncStorage.getItem(queueKey);
-        console.log('Current queue:', queue);
-
+        await addQueueOffline(MENTORING_QUEUE_KEY, payload);
         await AsyncStorage.removeItem('mentoring_editable_details_temp');
-        setOfflineQueueCount(arr.length);
         Alert.alert('Berhasil (Offline)', 'Data akan dikirim saat online.');
         navigation.goBack();
         return;
@@ -613,7 +589,6 @@ const AddDataMentoring = ({route}) => {
       );
       if (response.data.success) {
         await AsyncStorage.removeItem('mentoring_editable_details_temp');
-        setOfflineQueueCount(0);
         Alert.alert('Sukses', 'Data mentoring berhasil ditambahkan!');
         if (navigation.canGoBack()) navigation.goBack();
         else navigation.navigate('FullDashboard');
@@ -639,7 +614,7 @@ const AddDataMentoring = ({route}) => {
     );
   }
 
-  // --- UI
+  // --- UI ---
   return (
     <ScrollView
       style={{flex: 1}}
@@ -647,9 +622,32 @@ const AddDataMentoring = ({route}) => {
       keyboardShouldPersistTaps="handled">
       <View style={styles.container}>
         <Text style={styles.title}>Tambah Data Mentoring {unitType}</Text>
+        <View
+          style={{
+            backgroundColor: '#e74c3c',
+            alignSelf: 'flex-start',
+            paddingHorizontal: 12,
+            paddingVertical: 4,
+            borderRadius: 16,
+            marginBottom: 8,
+          }}>
+          <TouchableOpacity
+            style={{
+              backgroundColor: '#e74c3c',
+              padding: 10,
+              alignItems: 'center',
+              paddingVertical: 6,
+              borderRadius: 12,
+            }}
+            onPress={handleClear}>
+            <Text style={{color: 'white', fontWeight: 'bold'}}>
+              Clear Cache Offline Mentoring
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-        {/* Badge + Tombol Push Manual */}
-        {offlineQueueCount > 0 && (
+        {/* Status Offline Queue & Push Manual */}
+        {mentoringQueueCount > 0 && (
           <View
             style={{
               backgroundColor: '#e74c3c',
@@ -660,12 +658,27 @@ const AddDataMentoring = ({route}) => {
               marginBottom: 8,
             }}>
             <Text style={{color: 'white'}}>
-              {offlineQueueCount} data offline menunggu jaringan!
+              {mentoringQueueCount} data offline menunggu jaringan!
             </Text>
+            {isConnected && (
+              <TouchableOpacity
+                onPress={pushMentoringQueue}
+                style={{
+                  marginTop: 6,
+                  backgroundColor: '#27ae60',
+                  paddingVertical: 6,
+                  borderRadius: 12,
+                  alignItems: 'center',
+                }}
+                disabled={syncing}>
+                <Text style={{color: '#fff', fontWeight: 'bold'}}>
+                  {syncing ? 'Mengirim...' : 'Push Sekarang ke Server'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
-
-        {isPushingQueue && (
+        {syncing && (
           <View
             style={{
               flexDirection: 'row',
@@ -1022,11 +1035,10 @@ const AddDataMentoring = ({route}) => {
         {/* Summary */}
         {renderLivePointsSection('observasi')}
         {renderLivePointsSection('mentoring')}
-
         <Button
           title={loading ? 'Menyimpan...' : 'Simpan'}
           onPress={handleSubmit}
-          disabled={loading || isPushingQueue}
+          disabled={loading || syncing}
         />
       </View>
     </ScrollView>

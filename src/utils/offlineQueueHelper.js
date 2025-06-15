@@ -2,35 +2,48 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import API_BASE_URL from '../config';
 
-let isPushingQueue = false;
+const isPushingQueue = {};
 
-// Tambah data ke antrian offline
+/**
+ * Tambah data ke queue offline (hindari duplikat payload).
+ */
 export const addQueueOffline = async (queueKey, payload) => {
-  const id_local = payload.id_local || Date.now() + '_' + Math.random();
+  const id_local =
+    payload.id_local ||
+    Date.now() + '_' + Math.random().toString(36).slice(2, 10);
   payload.id_local = id_local;
   let arr = [];
   try {
     const str = await AsyncStorage.getItem(queueKey);
     if (str) arr = JSON.parse(str);
   } catch {}
-  if (!arr.find(item => item.id_local === id_local)) {
+  // Hindari duplikat based on isi selain id_local
+  if (
+    !arr.find(
+      item =>
+        JSON.stringify({...item, id_local: undefined}) ===
+        JSON.stringify({...payload, id_local: undefined}),
+    )
+  ) {
     arr.push(payload);
     await AsyncStorage.setItem(queueKey, JSON.stringify(arr));
   }
   return arr.length;
 };
 
-// Push antrian ke server
+/**
+ * Push antrian offline ke server.
+ */
 export const pushOfflineQueue = async (queueKey, endpoint) => {
-  if (isPushingQueue) return 0;
-  isPushingQueue = true;
+  if (isPushingQueue[queueKey]) return 0;
+  isPushingQueue[queueKey] = true;
   let queue = [];
   try {
     const str = await AsyncStorage.getItem(queueKey);
     if (str) queue = JSON.parse(str);
   } catch {}
   if (!queue.length) {
-    isPushingQueue = false;
+    isPushingQueue[queueKey] = false;
     return 0;
   }
   const token = await AsyncStorage.getItem('userToken');
@@ -38,7 +51,8 @@ export const pushOfflineQueue = async (queueKey, endpoint) => {
   let successCount = 0;
   for (let i = 0; i < queue.length; i++) {
     try {
-      const res = await axios.post(`${API_BASE_URL}${endpoint}`, queue[i], {
+      const {id_local, ...payload} = queue[i]; // jangan kirim id_local ke API
+      const res = await axios.post(`${API_BASE_URL}${endpoint}`, payload, {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
@@ -54,9 +68,8 @@ export const pushOfflineQueue = async (queueKey, endpoint) => {
       failedData.push(queue[i]);
     }
   }
-  // HANYA failed yang disimpan
   await AsyncStorage.setItem(queueKey, JSON.stringify(failedData));
-  isPushingQueue = false;
+  isPushingQueue[queueKey] = false;
   return successCount;
 };
 
@@ -69,4 +82,8 @@ export const getOfflineQueueCount = async queueKey => {
   } catch {
     return 0;
   }
+};
+
+export const clearOfflineQueue = async queueKey => {
+  await AsyncStorage.removeItem(queueKey);
 };
