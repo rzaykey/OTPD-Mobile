@@ -361,64 +361,77 @@ export default function Data() {
               <Animatable.View
                 animation={expanded ? 'fadeInDown' : 'fadeInUp'}
                 duration={350}
-                style={[styles.cardContainer, expanded && styles.cardExpanded]}>
-                {/* Card Header */}
+                style={styles.cardContainer}>
+                {/* HEADER */}
                 <TouchableOpacity
                   onPress={() => toggleExpand(item.id)}
-                  style={{paddingBottom: expanded ? 0 : 8}}
-                  activeOpacity={0.88}>
-                  <View style={styles.cardHeader}>
+                  activeOpacity={0.88}
+                  style={styles.cardHeader}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      flex: 1,
+                    }}>
+                    <View style={styles.avatar}>
+                      <Icon name="person-outline" size={20} color="#fff" />
+                    </View>
                     <View>
-                      <View
-                        style={{flexDirection: 'row', alignItems: 'center'}}>
-                        <Icon
-                          name="person-circle-outline"
-                          size={20}
-                          color="#1E90FF"
-                          style={{marginRight: 5}}
-                        />
-                        <Text style={styles.cardTitle}>
-                          {item.operator_name}
-                        </Text>
-                      </View>
+                      <Text style={styles.cardTitle}>{item.operator_name}</Text>
                       <Text style={styles.cardSubtitle}>
                         {item.trainer_name}
                       </Text>
                     </View>
-                    <View style={{alignItems: 'flex-end'}}>
-                      <Text style={styles.cardSite}>{item.site}</Text>
-                      <Icon
-                        name={
-                          expanded
-                            ? 'chevron-up-outline'
-                            : 'chevron-down-outline'
-                        }
-                        size={19}
-                        color="#bbb"
-                      />
-                    </View>
+                  </View>
+                  <View style={{alignItems: 'flex-end', minWidth: 70}}>
+                    <Text style={styles.cardSite}>{item.site}</Text>
+                    <Icon
+                      name={
+                        expanded ? 'chevron-up-outline' : 'chevron-down-outline'
+                      }
+                      size={18}
+                      color="#bbb"
+                      style={{marginTop: 2}}
+                    />
                   </View>
                 </TouchableOpacity>
-                {/* Card Detail (expand) */}
+                {/* DETAIL */}
                 {expanded && (
                   <View style={styles.cardDetail}>
-                    <Text style={styles.cardDetailText}>Area: {item.area}</Text>
                     <Text style={styles.cardDetailText}>
-                      Unit Class: {item.class_name}
+                      Area:{' '}
+                      <Text style={{fontWeight: 'bold'}}>{item.area}</Text>
                     </Text>
                     <Text style={styles.cardDetailText}>
-                      Date: {item.date_mentoring.split(' ')[0]}
+                      Unit Class:{' '}
+                      <Text style={{fontWeight: 'bold'}}>
+                        {item.class_name}
+                      </Text>
                     </Text>
                     <Text style={styles.cardDetailText}>
-                      Hour: {item.start_time} - {item.end_time}
+                      Date:{' '}
+                      <Text style={{fontWeight: 'bold'}}>
+                        {item.date_mentoring.split(' ')[0]}
+                      </Text>
                     </Text>
                     <Text style={styles.cardDetailText}>
-                      Point Observasi: {item.average_point_observation}
+                      Hour:{' '}
+                      <Text style={{fontWeight: 'bold'}}>
+                        {item.start_time} - {item.end_time}
+                      </Text>
                     </Text>
                     <Text style={styles.cardDetailText}>
-                      Point Mentoring: {item.average_point_mentoring}
+                      Point Observasi:{' '}
+                      <Text style={{fontWeight: 'bold'}}>
+                        {item.average_point_observation}
+                      </Text>
                     </Text>
-                    {/* Tombol Aksi */}
+                    <Text style={styles.cardDetailText}>
+                      Point Mentoring:{' '}
+                      <Text style={{fontWeight: 'bold'}}>
+                        {item.average_point_mentoring}
+                      </Text>
+                    </Text>
                     <View style={styles.cardActionRow}>
                       <TouchableOpacity
                         style={[

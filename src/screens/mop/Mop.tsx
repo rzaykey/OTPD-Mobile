@@ -287,51 +287,35 @@ export default function Mop() {
             <Animatable.View
               animation={expanded ? 'fadeInDown' : 'fadeInUp'}
               duration={350}
-              style={[
-                styles.cardContainer,
-                expanded && styles.cardExpanded,
-                {marginBottom: 14, borderRadius: 14, overflow: 'hidden'},
-              ]}>
-              {/* Header card */}
+              style={styles.cardContainer}>
+              {/* Card Header */}
               <TouchableOpacity
                 onPress={() => toggleExpand(item.id)}
-                style={{paddingBottom: expanded ? 0 : 8}}
+                style={styles.cardHeader}
                 activeOpacity={0.88}>
-                <View style={styles.cardHeader}>
+                <View
+                  style={{flexDirection: 'row', alignItems: 'center', flex: 1}}>
+                  <View style={styles.avatar}>
+                    <Icon name="person-outline" size={20} color="#fff" />
+                  </View>
                   <View>
-                    <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                      <Icon
-                        name="person-circle-outline"
-                        size={22}
-                        color="#1E90FF"
-                        style={{marginRight: 7}}
-                      />
-                      <Text style={styles.cardTitle}>{item.employee_name}</Text>
-                    </View>
-                    <Text
-                      style={[
-                        styles.cardSubtitle,
-                        {marginTop: 2, fontSize: 13},
-                      ]}>
-                      JDE: {item.jde_no}
-                    </Text>
+                    <Text style={styles.cardTitle}>{item.employee_name}</Text>
+                    <Text style={styles.cardSubtitle}>JDE: {item.jde_no}</Text>
                   </View>
-                  <View style={{alignItems: 'flex-end'}}>
-                    <Text style={[styles.cardSite, {fontWeight: 'bold'}]}>
-                      {item.site}
-                    </Text>
-                    <Text style={{fontSize: 12, color: '#888'}}>
-                      {item.month}/{item.year}
-                    </Text>
-                    <Icon
-                      name={
-                        expanded ? 'chevron-up-outline' : 'chevron-down-outline'
-                      }
-                      size={20}
-                      color="#bbb"
-                      style={{marginTop: 3}}
-                    />
-                  </View>
+                </View>
+                <View style={{alignItems: 'flex-end', minWidth: 70}}>
+                  <Text style={styles.cardSite}>{item.site}</Text>
+                  <Text style={{fontSize: 12, color: '#888'}}>
+                    {item.month}/{item.year}
+                  </Text>
+                  <Icon
+                    name={
+                      expanded ? 'chevron-up-outline' : 'chevron-down-outline'
+                    }
+                    size={18}
+                    color="#bbb"
+                    style={{marginTop: 2}}
+                  />
                 </View>
               </TouchableOpacity>
 

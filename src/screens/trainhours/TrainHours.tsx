@@ -333,53 +333,66 @@ export default function TrainHoursScreen() {
           return (
             <Animatable.View
               animation={expanded ? 'fadeInDown' : 'fadeInUp'}
-              duration={350}
-              style={[styles.cardContainer, expanded && styles.cardExpanded]}>
-              {/* Header card */}
+              duration={320}
+              style={styles.cardContainer}>
+              {/* HEADER CARD */}
               <TouchableOpacity
                 onPress={() => toggleExpand(item.id)}
-                style={{paddingBottom: expanded ? 0 : 8}}
-                activeOpacity={0.88}>
-                <View style={styles.cardHeader}>
-                  <View>
-                    <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                      <Icon
-                        name="person-circle-outline"
-                        size={20}
-                        color="#1E90FF"
-                        style={{marginRight: 5}}
-                      />
-                      <Text style={styles.cardTitle}>{item.employee_name}</Text>
-                    </View>
-                    <Text style={styles.cardSubtitle}>{item.position}</Text>
+                activeOpacity={0.88}
+                style={styles.cardHeader}>
+                <View
+                  style={{flexDirection: 'row', alignItems: 'center', flex: 1}}>
+                  <View style={styles.avatar}>
+                    <Icon name="person-outline" size={20} color="#fff" />
                   </View>
-                  <View style={{alignItems: 'flex-end'}}>
-                    <Text style={styles.cardSite}>{item.site}</Text>
-                    <Text style={{fontSize: 12, color: '#888'}}>
-                      {(item.date_activity || '').split(' ')[0]}
+                  <View>
+                    <Text style={styles.cardTitle}>{item.employee_name}</Text>
+                    <Text style={styles.cardSubtitle}>
+                      {item.position || item.site}
                     </Text>
-                    <Icon
-                      name={
-                        expanded ? 'chevron-up-outline' : 'chevron-down-outline'
-                      }
-                      size={19}
-                      color="#bbb"
-                    />
                   </View>
                 </View>
+                <View style={{alignItems: 'flex-end', minWidth: 70}}>
+                  <Text style={styles.cardSite}>{item.site}</Text>
+                  <Text style={{fontSize: 12, color: '#888', marginBottom: 3}}>
+                    {(item.date_activity || '').split(' ')[0]}
+                  </Text>
+                  <Icon
+                    name={
+                      expanded ? 'chevron-up-outline' : 'chevron-down-outline'
+                    }
+                    size={18}
+                    color="#bbb"
+                  />
+                </View>
               </TouchableOpacity>
-              {/* Detail card */}
+
+              {/* DETAIL CARD */}
               {expanded && (
                 <View style={styles.cardDetail}>
                   <Text style={styles.cardDetailText}>
-                    Training: {item.training_type} | Unit Type:{' '}
-                    {item.unit_class}
+                    Training:{' '}
+                    <Text style={{fontWeight: 'bold'}}>
+                      {item.training_type || '-'}
+                    </Text>
                   </Text>
                   <Text style={styles.cardDetailText}>
-                    Type Class: {(item.unit_type || '').split(' ')[0]}
+                    Unit:{' '}
+                    <Text style={{fontWeight: 'bold'}}>
+                      {item.unit_class || '-'}
+                    </Text>
                   </Text>
                   <Text style={styles.cardDetailText}>
-                    HM Start: {item.hm_start} - HM End {item.hm_end}
+                    Type Class:{' '}
+                    <Text style={{fontWeight: 'bold'}}>
+                      {(item.unit_type || '').split(' ')[0]}
+                    </Text>
+                  </Text>
+                  <Text style={styles.cardDetailText}>
+                    HM Start:{' '}
+                    <Text style={{fontWeight: 'bold'}}>{item.hm_start}</Text> -
+                    HM End:{' '}
+                    <Text style={{fontWeight: 'bold'}}>{item.hm_end}</Text>
                   </Text>
                   <Text style={styles.cardDetailText}>
                     Plan Total HM: {item.plan_total_hm} | Total HM:{' '}

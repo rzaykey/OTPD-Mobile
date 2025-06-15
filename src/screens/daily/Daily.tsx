@@ -424,7 +424,7 @@ export default function Daily() {
         <FlatList
           data={paginatedData}
           keyExtractor={item => item.id.toString()}
-          renderItem={({item, index}) => {
+          renderItem={({item}) => {
             const expanded = item.id === expandedId;
             return (
               <Animatable.View
@@ -439,25 +439,32 @@ export default function Daily() {
                   <View style={styles.cardHeader}>
                     <View>
                       <View
-                        style={{flexDirection: 'row', alignItems: 'center'}}>
-                        <Icon
-                          name="person-circle-outline"
-                          size={20}
-                          color="#1E90FF"
-                          style={{marginRight: 5}}
-                        />
-                        <Text style={styles.cardTitle}>
-                          {item.employee_name}
-                        </Text>
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          flex: 1,
+                        }}>
+                        <View style={styles.avatar}>
+                          <Icon name="person-outline" size={20} color="#fff" />
+                        </View>
+                        <View>
+                          <Text style={styles.cardTitle}>
+                            {item.employee_name}
+                          </Text>
+                          <Text style={styles.cardSubtitle}>
+                            {item.position || item.site}
+                          </Text>
+                          <Text style={styles.cardSubtitle}>
+                            JDE: {item.jde_no}
+                          </Text>
+                        </View>
                       </View>
-                      <Text style={styles.cardSubtitle}>
-                        JDE: {item.jde_no}
-                      </Text>
                     </View>
-                    <View style={{alignItems: 'flex-end'}}>
+                    <View style={{alignItems: 'flex-end', minWidth: 70}}>
                       <Text style={styles.cardSite}>{item.site}</Text>
-                      <Text style={{fontSize: 12, color: '#888'}}>
-                        {(item.date_activity || '').split(' ')[0]}
+                      <Text
+                        style={{fontSize: 12, color: '#888', marginBottom: 3}}>
+                        {item.date_activity?.split(' ')[0]}
                       </Text>
                       <Icon
                         name={
@@ -465,7 +472,7 @@ export default function Daily() {
                             ? 'chevron-up-outline'
                             : 'chevron-down-outline'
                         }
-                        size={19}
+                        size={18}
                         color="#bbb"
                       />
                     </View>
