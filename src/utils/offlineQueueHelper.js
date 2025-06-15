@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import API_BASE_URL from '../config';
+import {ToastAndroid, Platform, Alert} from 'react-native';
 
 const isPushingQueue = {};
 
@@ -28,7 +29,17 @@ export const addQueueOffline = async (queueKey, payload) => {
   return arr.length;
 };
 
-export const pushOfflineQueue = async (queueKey, endpoint) => {
+function showSyncToast(message) {
+  if (Platform.OS === 'android') {
+    ToastAndroid.show(message, ToastAndroid.SHORT);
+  } else {
+    Alert.alert('Info', message);
+  }
+}
+
+// offlineQueueHelper.js
+
+export const pushOfflineQueue = async (queueKey, endpoint, onProgress) => {
   if (isPushingQueue[queueKey]) return 0;
   isPushingQueue[queueKey] = true;
   let queue = [];
@@ -53,7 +64,6 @@ export const pushOfflineQueue = async (queueKey, endpoint) => {
           Accept: 'application/json',
         },
       });
-      // <--- Perhatikan status response backend
       if (res.data?.success || res.data?.status) {
         successCount += 1;
       } else {
@@ -62,11 +72,22 @@ export const pushOfflineQueue = async (queueKey, endpoint) => {
     } catch {
       failedData.push(queue[i]);
     }
+    // <-- Panggil progress di sini!
+    if (onProgress) onProgress(i + 1, queue.length);
+  }
+  if (successCount) {
+    showSyncToast(`${successCount} data offline berhasil di-sync ke server!`);
   }
   await AsyncStorage.setItem(queueKey, JSON.stringify(failedData));
+  if (failedData.length) {
+    showSyncToast(
+      `${failedData.length} data gagal dikirim. Cek koneksi/server!`,
+    );
+  }
   isPushingQueue[queueKey] = false;
   return successCount;
 };
+
 
 export const getOfflineQueueCount = async queueKey => {
   const data = await AsyncStorage.getItem(queueKey);

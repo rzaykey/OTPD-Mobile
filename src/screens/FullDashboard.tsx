@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useState, useContext} from 'react';
 import {
   SafeAreaView,
   Text,
@@ -11,6 +11,10 @@ import {
   Alert,
   ToastAndroid,
   ActivityIndicator,
+  Modal,
+  Platform,
+  ProgressBarAndroid,
+  ProgressViewIOS,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
@@ -24,9 +28,7 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
 import {useQueryClient} from '@tanstack/react-query';
 import {cacheAllMasterData} from '../utils/cacheAllMasterData';
-import {getOfflineMentoringQueueCount} from '../utils/utils';
-// Tambahan import (paling atas)
-import axios from 'axios';
+import {OfflineQueueContext} from '../utils/OfflineQueueContext';
 
 if (!(global as any)._IS_NEW_ARCHITECTURE_ENABLED) {
   UIManager.setLayoutAnimationEnabledExperimental &&
@@ -114,6 +116,17 @@ const defaultSummary = {
   siteTotal: 0,
 };
 
+const summaryCardColors = [
+  '#1E90FF',
+  '#16A085',
+  '#E67E22',
+  '#9B59B6',
+  '#27AE60',
+  '#2980B9',
+  '#F39C12',
+  '#C0392B',
+];
+
 const FullDashboard = ({navigation}: Props) => {
   const insets = useSafeAreaInsets();
   const [user, setUser] = useState<any>(null);
@@ -123,36 +136,38 @@ const FullDashboard = ({navigation}: Props) => {
   const [summary, setSummary] = useState(defaultSummary);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [isConnected, setIsConnected] = useState(true);
-  const [isCachingMaster, setIsCachingMaster] = useState(false); // <--- state baru
-  const [offlineQueueCount, setOfflineQueueCount] = useState(0);
-  const [isPushingOffline, setIsPushingOffline] = useState(false);
+  const [isCachingMaster, setIsCachingMaster] = useState(false);
 
-  // Ambil jumlah queue offline saat dashboard tampil/masuk
-  const loadOfflineQueueCount = async () => {
-    const key = 'mentoring_queue_offline';
-    try {
-      const str = await AsyncStorage.getItem(key);
-      if (str) {
-        const arr = JSON.parse(str);
-        setOfflineQueueCount(Array.isArray(arr) ? arr.length : 0);
-      } else {
-        setOfflineQueueCount(0);
-      }
-    } catch {
-      setOfflineQueueCount(0);
-    }
-  };
-  // Initial load & update badge tiap Dashboard tampil
+  // PROGRESS SYNC MODAL STATE
+  const [syncVisible, setSyncVisible] = useState(false);
+  const [syncProgress, setSyncProgress] = useState(0);
+  const [syncTotal, setSyncTotal] = useState(0);
+  const [syncLabel, setSyncLabel] = useState('');
+
+  // OFFLINE QUEUE BADGES
+  const {
+    mentoringQueueCount,
+    dailyQueueCount,
+    trainHoursQueueCount,
+    syncing,
+    pushMentoringQueue,
+    pushDailyQueue,
+    pushTrainHoursQueue,
+  } = useContext(OfflineQueueContext);
+
+  // Load user info
   useEffect(() => {
-    loadOfflineQueueCount();
-    const unsubscribe = navigation.addListener('focus', loadOfflineQueueCount);
-    return unsubscribe;
-  }, [navigation]);
+    const fetchUser = async () => {
+      const userString = await AsyncStorage.getItem('userData');
+      if (userString) setUser(JSON.parse(userString));
+    };
+    fetchUser();
+  }, []);
 
+  // Fetch summary (dashboard counters)
   useEffect(() => {
     fetchSummary();
   }, []);
-
   const fetchSummary = async () => {
     try {
       setLoadingSummary(true);
@@ -170,14 +185,7 @@ const FullDashboard = ({navigation}: Props) => {
     }
   };
 
-  useEffect(() => {
-    const fetchUser = async () => {
-      const userString = await AsyncStorage.getItem('userData');
-      if (userString) setUser(JSON.parse(userString));
-    };
-    fetchUser();
-  }, []);
-
+  // Category handler
   const handleCategoryPress = (categoryId: string) => {
     setSelectedCategoryId(prev => (prev === categoryId ? null : categoryId));
     setActiveSubmenu(null);
@@ -208,6 +216,8 @@ const FullDashboard = ({navigation}: Props) => {
   const selectedCategory = categories.find(
     cat => cat.id === selectedCategoryId,
   );
+
+  // Logout
   const handleLogout = () => {
     Alert.alert(
       'Konfirmasi Logout',
@@ -234,20 +244,17 @@ const FullDashboard = ({navigation}: Props) => {
       {cancelable: true},
     );
   };
+
+  // DateTime clock
   useEffect(() => {
     const interval = setInterval(() => setDateTime(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Subsubmenu render
   const renderSubsubmenu = (items: any[]) => (
     <Animatable.View animation="fadeInUp" duration={400} style={{marginTop: 6}}>
-      <View
-        style={{
-          flexDirection: 'row',
-          flexWrap: 'wrap',
-          justifyContent: 'space-between',
-          paddingHorizontal: 4,
-          paddingBottom: 8,
-        }}>
+      <View style={styles.subsubmenuGrid}>
         {items.map((item, idx) => (
           <TouchableOpacity
             key={item.id ? item.id : `${item.label}-${idx}`}
@@ -261,6 +268,8 @@ const FullDashboard = ({navigation}: Props) => {
       </View>
     </Animatable.View>
   );
+
+  // Network status
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener(state => {
       setIsConnected(state.isConnected === true);
@@ -268,8 +277,9 @@ const FullDashboard = ({navigation}: Props) => {
     NetInfo.fetch().then(state => setIsConnected(state.isConnected === true));
     return () => unsubscribe();
   }, []);
-  const queryClient = useQueryClient();
 
+  // Query client: sync master
+  const queryClient = useQueryClient();
   useEffect(() => {
     let shown = false;
     const unsubscribe = NetInfo.addEventListener(async state => {
@@ -285,11 +295,12 @@ const FullDashboard = ({navigation}: Props) => {
     return () => unsubscribe();
   }, [queryClient]);
 
+  // Auto cache master
   useEffect(() => {
     cacheAllMasterData();
   }, []);
 
-  // === FORCE UPDATE BUTTON ===
+  // Force update master
   const handleForceUpdateMaster = async () => {
     try {
       setIsCachingMaster(true);
@@ -310,22 +321,10 @@ const FullDashboard = ({navigation}: Props) => {
           {paddingBottom: Math.max(insets.bottom, 100)},
         ]}>
         {/* HEADER */}
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingHorizontal: 14,
-            marginTop: 16,
-            marginBottom: 6,
-            justifyContent: 'space-between',
-          }}>
+        <View style={styles.headerWrap}>
           <Image
             source={require('../assets/images/logo.jpg')}
-            style={{
-              width: 110,
-              height: 55,
-              resizeMode: 'contain',
-            }}
+            style={styles.logo}
           />
           {/* Status jaringan + jam */}
           <View style={styles.statusContainer}>
@@ -340,33 +339,16 @@ const FullDashboard = ({navigation}: Props) => {
               {dayjs(dateTime).format('dddd, DD MMMM YYYY HH:mm:ss')}
             </Text>
             {/* FORCE UPDATE BUTTON */}
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                marginTop: 6,
-              }}>
+            <View style={styles.forceUpdateWrap}>
               <TouchableOpacity
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  backgroundColor: '#1976d2',
-                  borderRadius: 8,
-                  paddingVertical: 5,
-                  paddingHorizontal: 12,
-                  marginRight: 6,
-                  opacity: isCachingMaster ? 0.6 : 1,
-                }}
+                style={[
+                  styles.forceUpdateButton,
+                  isCachingMaster && styles.forceUpdateButtonDisabled,
+                ]}
                 onPress={handleForceUpdateMaster}
                 disabled={isCachingMaster}>
                 <Icon name="refresh-outline" size={18} color="#fff" />
-                <Text
-                  style={{
-                    color: '#fff',
-                    marginLeft: 5,
-                    fontWeight: 'bold',
-                    fontSize: 13,
-                  }}>
+                <Text style={styles.forceUpdateButtonText}>
                   Force Update Data
                 </Text>
                 {isCachingMaster && (
@@ -377,16 +359,13 @@ const FullDashboard = ({navigation}: Props) => {
                   />
                 )}
               </TouchableOpacity>
-              {/* Status sinkronisasi */}
               {isCachingMaster && (
-                <Text
-                  style={{fontSize: 11, color: '#1976d2', fontWeight: 'bold'}}>
-                  Syncing data...
-                </Text>
+                <Text style={styles.forceUpdateStatus}>Syncing data...</Text>
               )}
             </View>
           </View>
         </View>
+        {/* USER HEADER */}
         <Animatable.View
           animation="fadeInDown"
           delay={70}
@@ -411,143 +390,155 @@ const FullDashboard = ({navigation}: Props) => {
             </View>
           )}
         </Animatable.View>
+
+        {/* --- BADGE PUSH OFFLINE QUEUE --- */}
+        {(mentoringQueueCount > 0 ||
+          dailyQueueCount > 0 ||
+          trainHoursQueueCount > 0) && (
+          <View style={styles.pushQueueBadge}>
+            {mentoringQueueCount > 0 && (
+              <View style={styles.pushQueueRow}>
+                <Text style={styles.pushQueueText}>
+                  {mentoringQueueCount} data Mentoring offline belum terkirim!
+                </Text>
+                <TouchableOpacity
+                  style={styles.pushQueueButton}
+                  onPress={pushMentoringQueue}>
+                  <Text style={styles.pushQueueButtonText}>Push Sekarang</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {dailyQueueCount > 0 && (
+              <View style={styles.pushQueueRow}>
+                <Text style={styles.pushQueueText}>
+                  {dailyQueueCount} data Daily offline belum terkirim!
+                </Text>
+                <TouchableOpacity
+                  style={styles.pushQueueButton}
+                  onPress={pushDailyQueue}>
+                  <Text style={styles.pushQueueButtonText}>Push Sekarang</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {trainHoursQueueCount > 0 && (
+              <View style={styles.pushQueueRow}>
+                <Text style={styles.pushQueueText}>
+                  {trainHoursQueueCount} data Train Hours offline belum
+                  terkirim!
+                </Text>
+                <TouchableOpacity
+                  style={styles.pushQueueButton}
+                  onPress={pushTrainHoursQueue}>
+                  <Text style={styles.pushQueueButtonText}>Push Sekarang</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* --- SYNC PROGRESS MODAL --- */}
+        <Modal visible={syncVisible} transparent animationType="fade">
+          <View style={styles.modalBackground}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Sinkronisasi {syncLabel}</Text>
+              {Platform.OS === 'android' ? (
+                <ProgressBarAndroid
+                  styleAttr="Horizontal"
+                  indeterminate={false}
+                  progress={syncProgress}
+                  style={styles.progressBar}
+                />
+              ) : (
+                <ProgressViewIOS
+                  progress={syncProgress}
+                  style={styles.progressBar}
+                />
+              )}
+              <Text style={styles.modalProgressText}>
+                {Math.round(syncProgress * 100)}% (
+                {Math.round(syncProgress * syncTotal)}/{syncTotal})
+              </Text>
+              <Text style={styles.modalDesc}>
+                Mohon tunggu, data offline sedang dikirim ke server...
+              </Text>
+            </View>
+          </View>
+        </Modal>
+
+        {/* --- SUMMARY CARDS --- */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{paddingLeft: 14, paddingBottom: 6}}>
-          {/* Summary Cards */}
-          <Animatable.View
-            animation="fadeInUp"
-            duration={600}
-            delay={60}
-            style={styles.summaryCardInteractive}>
-            <TouchableOpacity onPress={() => navigation.navigate('Data')}>
-              <Icon name="school-outline" size={32} color="#fff" />
-              <Text style={styles.summaryLabel}>Mentoring</Text>
-              <Text style={styles.summaryValue}>
-                {loadingSummary ? '-' : summary.mentoringToday}
-              </Text>
-              <Text style={styles.summarySub}>Hari ini</Text>
-            </TouchableOpacity>
-          </Animatable.View>
-          <Animatable.View
-            animation="fadeInUp"
-            duration={600}
-            delay={100}
-            style={[
-              styles.summaryCardInteractive,
-              {backgroundColor: '#16A085'},
-            ]}>
-            <TouchableOpacity
-              onPress={() => navigation.navigate('DailyActivity')}>
-              <Icon name="calendar-outline" size={32} color="#fff" />
-              <Text style={styles.summaryLabel}>Daily</Text>
-              <Text style={styles.summaryValue}>
-                {loadingSummary ? '-' : summary.dailyToday}
-              </Text>
-              <Text style={styles.summarySub}>Hari ini</Text>
-            </TouchableOpacity>
-          </Animatable.View>
-          <Animatable.View
-            animation="fadeInUp"
-            duration={600}
-            delay={140}
-            style={[
-              styles.summaryCardInteractive,
-              {backgroundColor: '#E67E22'},
-            ]}>
-            <TouchableOpacity onPress={() => navigation.navigate('TrainHours')}>
-              <Icon name="barbell-outline" size={32} color="#fff" />
-              <Text style={styles.summaryLabel}>Train Hours</Text>
-              <Text style={styles.summaryValue}>
-                {loadingSummary ? '-' : summary.trainHoursToday}
-              </Text>
-              <Text style={styles.summarySub}>Hari ini</Text>
-            </TouchableOpacity>
-          </Animatable.View>
-          <Animatable.View
-            animation="fadeInUp"
-            duration={600}
-            delay={180}
-            style={[
-              styles.summaryCardInteractive,
-              {backgroundColor: '#9B59B6'},
-            ]}>
-            <TouchableOpacity>
-              <Icon name="map-outline" size={32} color="#fff" />
-              <Text style={styles.summaryLabel}>Site</Text>
-              <Text style={styles.summaryValue}>
-                {loadingSummary ? '-' : summary.siteTotal}
-              </Text>
-            </TouchableOpacity>
-          </Animatable.View>
-          <Animatable.View
-            animation="fadeInUp"
-            duration={600}
-            delay={200}
-            style={[
-              styles.summaryCardInteractive,
-              {backgroundColor: '#27AE60'},
-            ]}>
-            <TouchableOpacity>
-              <Icon name="layers-outline" size={32} color="#fff" />
-              <Text style={styles.summaryLabel}>Class Unit</Text>
-              <Text style={styles.summaryValue}>
-                {loadingSummary ? '-' : summary.classTotal}
-              </Text>
-            </TouchableOpacity>
-          </Animatable.View>
-          <Animatable.View
-            animation="fadeInUp"
-            duration={600}
-            delay={220}
-            style={[
-              styles.summaryCardInteractive,
-              {backgroundColor: '#2980B9'},
-            ]}>
-            <TouchableOpacity>
-              <Icon name="grid-outline" size={32} color="#fff" />
-              <Text style={styles.summaryLabel}>Type Unit</Text>
-              <Text style={styles.summaryValue}>
-                {loadingSummary ? '-' : summary.typeTotal}
-              </Text>
-            </TouchableOpacity>
-          </Animatable.View>
-          <Animatable.View
-            animation="fadeInUp"
-            duration={600}
-            delay={260}
-            style={[
-              styles.summaryCardInteractive,
-              {backgroundColor: '#F39C12'},
-            ]}>
-            <TouchableOpacity>
-              <Icon name="construct-outline" size={32} color="#fff" />
-              <Text style={styles.summaryLabel}>Model Unit</Text>
-              <Text style={styles.summaryValue}>
-                {loadingSummary ? '-' : summary.modelTotal}
-              </Text>
-            </TouchableOpacity>
-          </Animatable.View>
-          <Animatable.View
-            animation="fadeInUp"
-            duration={600}
-            delay={300}
-            style={[
-              styles.summaryCardInteractive,
-              {backgroundColor: '#C0392B'},
-            ]}>
-            <TouchableOpacity>
-              <Icon name="cube-outline" size={32} color="#fff" />
-              <Text style={styles.summaryLabel}>Unit</Text>
-              <Text style={styles.summaryValue}>
-                {loadingSummary ? '-' : summary.unitTotal}
-              </Text>
-            </TouchableOpacity>
-          </Animatable.View>
+          contentContainerStyle={styles.summaryCardScroll}>
+          {[
+            {
+              label: 'Mentoring',
+              value: summary.mentoringToday,
+              sub: 'Hari ini',
+            },
+            {label: 'Daily', value: summary.dailyToday, sub: 'Hari ini'},
+            {
+              label: 'Train Hours',
+              value: summary.trainHoursToday,
+              sub: 'Hari ini',
+            },
+            {label: 'Site', value: summary.siteTotal},
+            {label: 'Class Unit', value: summary.classTotal},
+            {label: 'Type Unit', value: summary.typeTotal},
+            {label: 'Model Unit', value: summary.modelTotal},
+            {label: 'Unit', value: summary.unitTotal},
+          ].map((item, idx) => (
+            <Animatable.View
+              key={item.label}
+              animation="fadeInUp"
+              duration={600}
+              delay={60 + idx * 40}
+              style={[
+                styles.summaryCardInteractive,
+                {backgroundColor: summaryCardColors[idx]},
+              ]}>
+              <TouchableOpacity
+                onPress={
+                  item.label === 'Mentoring'
+                    ? () => navigation.navigate('Data')
+                    : item.label === 'Daily'
+                    ? () => navigation.navigate('DailyActivity')
+                    : item.label === 'Train Hours'
+                    ? () => navigation.navigate('TrainHours')
+                    : undefined
+                }>
+                <Icon
+                  name={
+                    item.label === 'Mentoring'
+                      ? 'school-outline'
+                      : item.label === 'Daily'
+                      ? 'calendar-outline'
+                      : item.label === 'Train Hours'
+                      ? 'barbell-outline'
+                      : item.label === 'Site'
+                      ? 'map-outline'
+                      : item.label === 'Class Unit'
+                      ? 'layers-outline'
+                      : item.label === 'Type Unit'
+                      ? 'grid-outline'
+                      : item.label === 'Model Unit'
+                      ? 'construct-outline'
+                      : 'cube-outline'
+                  }
+                  size={32}
+                  color="#fff"
+                />
+                <Text style={styles.summaryLabel}>{item.label}</Text>
+                <Text style={styles.summaryValue}>
+                  {loadingSummary ? '-' : item.value}
+                </Text>
+                {item.sub && <Text style={styles.summarySub}>{item.sub}</Text>}
+              </TouchableOpacity>
+            </Animatable.View>
+          ))}
         </ScrollView>
 
-        {/* SUBMENU UTAMA */}
+        {/* --- SUBMENU UTAMA --- */}
         {selectedCategory && (
           <Animatable.View animation="fadeInRight" delay={100}>
             <FlatList
@@ -557,10 +548,7 @@ const FullDashboard = ({navigation}: Props) => {
                 item.id ? String(item.id) : `${item.label}-${idx}`
               }
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{
-                paddingHorizontal: 8,
-                paddingVertical: 10,
-              }}
+              contentContainerStyle={styles.menuListContainer}
               renderItem={({item}) => (
                 <TouchableOpacity
                   style={[
@@ -589,7 +577,7 @@ const FullDashboard = ({navigation}: Props) => {
           </Animatable.View>
         )}
 
-        {/* SUBSUBMENU (GRID) */}
+        {/* --- SUBSUBMENU (GRID) --- */}
         {selectedCategory &&
           selectedCategory.submenu.map((item, idx) =>
             activeSubmenu === item.label && item.subsubmenu ? (
@@ -600,7 +588,7 @@ const FullDashboard = ({navigation}: Props) => {
           )}
       </ScrollView>
 
-      {/* BOTTOM BAR */}
+      {/* --- BOTTOM BAR --- */}
       <View
         style={[
           styles.bottomMenuBar,

@@ -194,4 +194,117 @@ export const dashboardStyles = {
     color: '#555',
     fontWeight: '500',
   },
+  pushQueueBadge: {
+    backgroundColor: '#e74c3c',
+    margin: 14,
+    borderRadius: 10,
+    padding: 10,
+    alignItems: 'center',
+  },
+  pushQueueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 7,
+  },
+  pushQueueText: {
+    color: '#fff',
+    flex: 1,
+  },
+  pushQueueButton: {
+    backgroundColor: '#27ae60',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginLeft: 10,
+  },
+  pushQueueButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  headerWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    marginTop: 16,
+    marginBottom: 6,
+    justifyContent: 'space-between',
+  },
+  logo: {
+    width: 110,
+    height: 55,
+    resizeMode: 'contain',
+  },
+  forceUpdateWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  forceUpdateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1976d2',
+    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    marginRight: 6,
+  },
+  forceUpdateButtonDisabled: {
+    opacity: 0.6,
+  },
+  forceUpdateButtonText: {
+    color: '#fff',
+    marginLeft: 5,
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  forceUpdateStatus: {
+    fontSize: 11,
+    color: '#1976d2',
+    fontWeight: 'bold',
+  },
+  modalBackground: {
+    flex: 1,
+    backgroundColor: '#0008',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 15,
+    padding: 24,
+    alignItems: 'center',
+    width: 260,
+  },
+  modalTitle: {
+    fontWeight: 'bold',
+    fontSize: 15,
+    marginBottom: 13,
+  },
+  modalProgressText: {
+    marginTop: 8,
+    fontSize: 14,
+  },
+  modalDesc: {
+    fontSize: 12,
+    color: '#555',
+    marginTop: 6,
+  },
+  progressBar: {
+    width: 180,
+  },
+  subsubmenuGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    paddingBottom: 8,
+  },
+  menuListContainer: {
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+  },
+  summaryCardScroll: {
+    paddingLeft: 14,
+    paddingBottom: 6,
+  },
 };

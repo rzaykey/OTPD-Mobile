@@ -33,23 +33,24 @@ export const OfflineQueueProvider = ({children}) => {
   const pushMentoringQueue = useCallback(async () => {
     setSyncing(true);
     await pushOfflineQueue(mentoringKey, '/mentoring/store');
+    await refreshQueueCount(); // <-- Tambahkan await di sini!
     setSyncing(false);
-    refreshQueueCount();
   }, [refreshQueueCount]);
 
   const pushDailyQueue = useCallback(async () => {
     setSyncing(true);
     await pushOfflineQueue(dailyKey, '/dayActivities');
+    await refreshQueueCount(); // <-- Tambahkan await di sini!
     setSyncing(false);
-    refreshQueueCount();
   }, [refreshQueueCount]);
-  
+
   const pushTrainHoursQueue = useCallback(async () => {
     setSyncing(true);
     await pushOfflineQueue(trainHoursKey, '/trainHours/store');
+    await refreshQueueCount(); // <-- Tambahkan await di sini!
     setSyncing(false);
-    refreshQueueCount();
   }, [refreshQueueCount]);
+  
 
   // AUTO-PUSH saat online
   const lastIsConnected = useRef(true);

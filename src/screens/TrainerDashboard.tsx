@@ -8,6 +8,13 @@ import {
   FlatList,
   Image,
   UIManager,
+  Alert,
+  ToastAndroid,
+  ActivityIndicator,
+  Modal,
+  Platform,
+  ProgressBarAndroid,
+  ProgressViewIOS,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
@@ -15,16 +22,21 @@ import {RootStackParamList} from '../navigation/types';
 import Icon from 'react-native-vector-icons/Ionicons';
 import * as Animatable from 'react-native-animatable';
 import {dashboardStyles as styles} from '../styles/dashboardStyles';
+import dayjs from 'dayjs';
 import API_BASE_URL from '../config';
-// Tambahkan jika ingin safe area bottom padding
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import NetInfo from '@react-native-community/netinfo';
+import {useQueryClient} from '@tanstack/react-query';
+import {cacheAllMasterData} from '../utils/cacheAllMasterData';
+// Import helper push queue (pastikan ini sudah ada support progressCallback!)
+import {pushOfflineQueue} from '../utils/offlineQueueHelper';
 
 if (!(global as any)._IS_NEW_ARCHITECTURE_ENABLED) {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-type Props = NativeStackScreenProps<RootStackParamList, 'FullDashboard'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'TrainerDashboard'>;
 
 const categories = [
   {
@@ -32,7 +44,7 @@ const categories = [
     title: 'Mentoring',
     icon: 'school-outline',
     submenu: [
-      {label: 'Data', icon: 'document-text-outline', screen: 'Data'},
+      {label: 'Index Mentoring', icon: 'document-text-outline', screen: 'Data'},
       {
         label: 'Tambah Mentoring',
         icon: 'add-circle-outline',
@@ -52,7 +64,7 @@ const categories = [
     submenu: [
       {
         label: 'Daily Activity',
-        icon: 'calendar-outline',
+        icon: 'document-text-outline',
         subsubmenu: [
           {label: 'Index Daily', icon: 'list-outline', screen: 'DailyActivity'},
           {
@@ -66,7 +78,11 @@ const categories = [
         label: 'Train Hours',
         icon: 'time-outline',
         subsubmenu: [
-          {label: 'Train Hours', icon: 'time-outline', screen: 'TrainHours'},
+          {
+            label: 'Index Train Hours',
+            icon: 'time-outline',
+            screen: 'TrainHours',
+          },
           {
             label: 'Tambah Train Hours',
             icon: 'add-circle-outline',
@@ -78,7 +94,6 @@ const categories = [
   },
 ];
 
-// 1. Tambahkan defaultSummary agar field summary selalu tampil (tidak pernah hilang)
 const defaultSummary = {
   mentoringToday: 0,
   dailyToday: 0,
@@ -91,22 +106,69 @@ const defaultSummary = {
 };
 
 const TrainerDashboard = ({navigation}: Props) => {
-  // [opsional] Untuk bottom safe area
   const insets = useSafeAreaInsets();
-
   const [user, setUser] = useState<any>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState('1');
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
-
-  // 2. Gunakan defaultSummary sebagai state awal
+  const [dateTime, setDateTime] = useState(new Date());
   const [summary, setSummary] = useState(defaultSummary);
   const [loadingSummary, setLoadingSummary] = useState(true);
+  const [isConnected, setIsConnected] = useState(true);
+  const [isCachingMaster, setIsCachingMaster] = useState(false);
+
+  // --- OFFLINE QUEUE BADGE STATE (per tipe queue) ---
+  const [mentoringQueueCount, setMentoringQueueCount] = useState(0);
+  const [dailyQueueCount, setDailyQueueCount] = useState(0);
+  const [trainHoursQueueCount, setTrainHoursQueueCount] = useState(0);
+
+  // --- PROGRESS SYNC MODAL STATE ---
+  const [syncVisible, setSyncVisible] = useState(false);
+  const [syncProgress, setSyncProgress] = useState(0);
+  const [syncTotal, setSyncTotal] = useState(0);
+  const [syncLabel, setSyncLabel] = useState('');
+
+  // --- LOAD BADGE QUEUE COUNT ---
+  const loadQueueCounts = async () => {
+    const getCount = async key => {
+      const str = await AsyncStorage.getItem(key);
+      if (!str) return 0;
+      try {
+        const arr = JSON.parse(str);
+        return Array.isArray(arr) ? arr.length : 0;
+      } catch {
+        return 0;
+      }
+    };
+    setMentoringQueueCount(await getCount('mentoring_queue_offline'));
+    setDailyQueueCount(await getCount('daily_queue_offline'));
+    setTrainHoursQueueCount(await getCount('trainhours_queue_offline'));
+  };
+  useEffect(() => {
+    loadQueueCounts();
+    const unsub = navigation.addListener('focus', loadQueueCounts);
+    return unsub;
+  }, [navigation]);
+
+  // --- PUSH QUEUE DENGAN PROGRESS ---
+  const handlePushOfflineQueue = async (queueKey, endpoint, label = 'Data') => {
+    setSyncLabel(label);
+    setSyncProgress(0);
+    setSyncTotal(0);
+    setSyncVisible(true);
+
+    await pushOfflineQueue(queueKey, endpoint, (done, total) => {
+      setSyncProgress(total ? done / total : 0);
+      setSyncTotal(total);
+      if (done === total) {
+        setTimeout(() => setSyncVisible(false), 1000);
+      }
+    });
+    loadQueueCounts();
+  };
 
   useEffect(() => {
     fetchSummary();
   }, []);
-
-  // 3. Perbaiki setSummary agar field tidak pernah hilang
   const fetchSummary = async () => {
     try {
       setLoadingSummary(true);
@@ -123,7 +185,6 @@ const TrainerDashboard = ({navigation}: Props) => {
       setLoadingSummary(false);
     }
   };
-
   useEffect(() => {
     const fetchUser = async () => {
       const userString = await AsyncStorage.getItem('userData');
@@ -131,13 +192,6 @@ const TrainerDashboard = ({navigation}: Props) => {
     };
     fetchUser();
   }, []);
-
-  // Logout
-  const handleLogout = async () => {
-    await AsyncStorage.multiRemove(['userToken', 'userRole', 'userData']);
-    navigation.replace('Login');
-  };
-
   const handleCategoryPress = (categoryId: string) => {
     setSelectedCategoryId(prev => (prev === categoryId ? null : categoryId));
     setActiveSubmenu(null);
@@ -150,10 +204,17 @@ const TrainerDashboard = ({navigation}: Props) => {
       navigation.navigate(item.screen);
     }
   };
+  const unitTypeMapping: {[key: string]: number} = {
+    DIGGER: 3,
+    BULLDOZER: 2,
+    GRADER: 5,
+    HAULER: 4,
+  };
   const handleSubsubmenuPress = (item: any) => {
     if (item.screen === 'AddDataMentoring') {
       const unitType = item.label.replace('Form ', '').toUpperCase();
-      navigation.navigate(item.screen, {data: {unitType}});
+      const unitTypeId = unitTypeMapping[unitType];
+      navigation.navigate(item.screen, {data: {unitType, unitTypeId}});
     } else {
       navigation.navigate(item.screen);
     }
@@ -161,7 +222,36 @@ const TrainerDashboard = ({navigation}: Props) => {
   const selectedCategory = categories.find(
     cat => cat.id === selectedCategoryId,
   );
-
+  const handleLogout = () => {
+    Alert.alert(
+      'Konfirmasi Logout',
+      'Yakin ingin logout?',
+      [
+        {text: 'Batal', style: 'cancel'},
+        {
+          text: 'Ya',
+          onPress: async () => {
+            await AsyncStorage.removeItem('userToken');
+            await AsyncStorage.removeItem('userData');
+            await AsyncStorage.removeItem('userRole');
+            ToastAndroid.show('Logout berhasil!', ToastAndroid.SHORT);
+            Alert.alert('Logout', 'Anda berhasil logout!', [
+              {
+                text: 'OK',
+                onPress: () => navigation.replace('Login'),
+              },
+            ]);
+          },
+          style: 'destructive',
+        },
+      ],
+      {cancelable: true},
+    );
+  };
+  useEffect(() => {
+    const interval = setInterval(() => setDateTime(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
   const renderSubsubmenu = (items: any[]) => (
     <Animatable.View animation="fadeInUp" duration={400} style={{marginTop: 6}}>
       <View
@@ -185,24 +275,129 @@ const TrainerDashboard = ({navigation}: Props) => {
       </View>
     </Animatable.View>
   );
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsConnected(state.isConnected === true);
+    });
+    NetInfo.fetch().then(state => setIsConnected(state.isConnected === true));
+    return () => unsubscribe();
+  }, []);
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    let shown = false;
+    const unsubscribe = NetInfo.addEventListener(async state => {
+      if (state.isConnected) {
+        const mutations = queryClient.getMutationCache().getAll();
+        const hasPaused = mutations.some(m => m.state.status === 'paused');
+        if (hasPaused && !shown) {
+          shown = true;
+          Alert.alert('Info', 'Sedang mengirim data yang tersimpan offline...');
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [queryClient]);
+  useEffect(() => {
+    cacheAllMasterData();
+  }, []);
+
+  // === FORCE UPDATE BUTTON ===
+  const handleForceUpdateMaster = async () => {
+    try {
+      setIsCachingMaster(true);
+      await cacheAllMasterData();
+      setIsCachingMaster(false);
+      ToastAndroid.show('Master data berhasil di-refresh!', ToastAndroid.SHORT);
+    } catch (err) {
+      setIsCachingMaster(false);
+      Alert.alert('Gagal', 'Refresh master gagal.\n' + (err?.message || ''));
+    }
+  };
 
   return (
     <SafeAreaView style={[styles.container, {paddingBottom: insets.bottom}]}>
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
-          {paddingBottom: Math.max(insets.bottom, 90)},
+          {paddingBottom: Math.max(insets.bottom, 100)},
         ]}>
         {/* HEADER */}
-        <View style={{alignItems: 'center', marginTop: 16, marginBottom: 2}}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 14,
+            marginTop: 16,
+            marginBottom: 6,
+            justifyContent: 'space-between',
+          }}>
           <Image
             source={require('../assets/images/logo.jpg')}
             style={{
-              width: 120,
-              height: 60,
+              width: 110,
+              height: 55,
               resizeMode: 'contain',
             }}
           />
+          {/* Status jaringan + jam */}
+          <View style={styles.statusContainer}>
+            <Text
+              style={[
+                styles.statusIndicator,
+                isConnected ? styles.statusOnline : styles.statusOffline,
+              ]}>
+              {isConnected ? '🟢 Online' : '🔴 Offline'}
+            </Text>
+            <Text style={styles.statusTime}>
+              {dayjs(dateTime).format('dddd, DD MMMM YYYY HH:mm:ss')}
+            </Text>
+            {/* FORCE UPDATE BUTTON */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                marginTop: 6,
+              }}>
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: '#1976d2',
+                  borderRadius: 8,
+                  paddingVertical: 5,
+                  paddingHorizontal: 12,
+                  marginRight: 6,
+                  opacity: isCachingMaster ? 0.6 : 1,
+                }}
+                onPress={handleForceUpdateMaster}
+                disabled={isCachingMaster}>
+                <Icon name="refresh-outline" size={18} color="#fff" />
+                <Text
+                  style={{
+                    color: '#fff',
+                    marginLeft: 5,
+                    fontWeight: 'bold',
+                    fontSize: 13,
+                  }}>
+                  Force Update Data
+                </Text>
+                {isCachingMaster && (
+                  <ActivityIndicator
+                    size={14}
+                    color="#fff"
+                    style={{marginLeft: 8}}
+                  />
+                )}
+              </TouchableOpacity>
+              {/* Status sinkronisasi */}
+              {isCachingMaster && (
+                <Text
+                  style={{fontSize: 11, color: '#1976d2', fontWeight: 'bold'}}>
+                  Syncing data...
+                </Text>
+              )}
+            </View>
+          </View>
         </View>
         <Animatable.View
           animation="fadeInDown"
@@ -210,7 +405,7 @@ const TrainerDashboard = ({navigation}: Props) => {
           style={styles.headerCard}>
           <Text style={styles.headerText}>
             <Icon name="person-circle-outline" size={22} color="#fff" /> Selamat
-            datang, {user?.role}!
+            datang, {user?.role || '-'} !
           </Text>
           <TouchableOpacity
             onPress={handleLogout}
@@ -228,10 +423,157 @@ const TrainerDashboard = ({navigation}: Props) => {
             </View>
           )}
         </Animatable.View>
+
+        {/* --- BADGE PUSH OFFLINE QUEUE --- */}
+        {(mentoringQueueCount > 0 ||
+          dailyQueueCount > 0 ||
+          trainHoursQueueCount > 0) && (
+          <View
+            style={{
+              backgroundColor: '#e74c3c',
+              margin: 14,
+              borderRadius: 10,
+              padding: 10,
+              alignItems: 'center',
+            }}>
+            {mentoringQueueCount > 0 && (
+              <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                <Text style={{color: '#fff', flex: 1}}>
+                  {mentoringQueueCount} data Mentoring offline belum terkirim!
+                </Text>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#27ae60',
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    marginLeft: 10,
+                  }}
+                  onPress={() =>
+                    handlePushOfflineQueue(
+                      'mentoring_queue_offline',
+                      '/mentoring/store',
+                      'Mentoring',
+                    )
+                  }>
+                  <Text style={{color: '#fff', fontWeight: 'bold'}}>
+                    Push Sekarang
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {dailyQueueCount > 0 && (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginTop: 7,
+                }}>
+                <Text style={{color: '#fff', flex: 1}}>
+                  {dailyQueueCount} data Daily offline belum terkirim!
+                </Text>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#27ae60',
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    marginLeft: 10,
+                  }}
+                  onPress={() =>
+                    handlePushOfflineQueue(
+                      'daily_queue_offline',
+                      '/dayActivities',
+                      'Daily',
+                    )
+                  }>
+                  <Text style={{color: '#fff', fontWeight: 'bold'}}>
+                    Push Sekarang
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {trainHoursQueueCount > 0 && (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginTop: 7,
+                }}>
+                <Text style={{color: '#fff', flex: 1}}>
+                  {trainHoursQueueCount} data Train Hours offline belum
+                  terkirim!
+                </Text>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#27ae60',
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    marginLeft: 10,
+                  }}
+                  onPress={() =>
+                    handlePushOfflineQueue(
+                      'trainhours_queue_offline',
+                      '/trainHours/store',
+                      'Train Hours',
+                    )
+                  }>
+                  <Text style={{color: '#fff', fontWeight: 'bold'}}>
+                    Push Sekarang
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* --- SYNC PROGRESS MODAL --- */}
+        <Modal visible={syncVisible} transparent animationType="fade">
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: '#0008',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+            <View
+              style={{
+                backgroundColor: '#fff',
+                borderRadius: 15,
+                padding: 24,
+                alignItems: 'center',
+                width: 260,
+              }}>
+              <Text
+                style={{fontWeight: 'bold', fontSize: 15, marginBottom: 13}}>
+                Sinkronisasi {syncLabel}
+              </Text>
+              {Platform.OS === 'android' ? (
+                <ProgressBarAndroid
+                  styleAttr="Horizontal"
+                  indeterminate={false}
+                  progress={syncProgress}
+                  style={{width: 180}}
+                />
+              ) : (
+                <ProgressViewIOS progress={syncProgress} style={{width: 180}} />
+              )}
+              <Text style={{marginTop: 8, fontSize: 14}}>
+                {Math.round(syncProgress * 100)}% (
+                {Math.round(syncProgress * syncTotal)}/{syncTotal})
+              </Text>
+              <Text style={{fontSize: 12, color: '#555', marginTop: 6}}>
+                Mohon tunggu, data offline sedang dikirim ke server...
+              </Text>
+            </View>
+          </View>
+        </Modal>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{paddingLeft: 14, paddingBottom: 6}}>
+          {/* Summary Cards */}
           <Animatable.View
             animation="fadeInUp"
             duration={600}

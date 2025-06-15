@@ -22,10 +22,7 @@ import {useNavigation} from '@react-navigation/native';
 import API_BASE_URL from '../../config';
 import NetInfo from '@react-native-community/netinfo';
 
-import {
-  addQueueOffline,
-  getOfflineQueueCount,
-} from '../../utils/offlineQueueHelper';
+import {addQueueOffline} from '../../utils/offlineQueueHelper';
 import {OfflineQueueContext} from '../../utils/OfflineQueueContext';
 
 // Enable layout animation for Android
@@ -36,7 +33,6 @@ if (Platform.OS === 'android') {
 
 const DAILY_QUEUE_KEY = 'daily_queue_offline';
 
-// ====== Collapsible Card (Section) ======
 const CollapsibleCard = ({title, children}) => {
   const [expanded, setExpanded] = useState(true);
   const toggleExpand = () => {
@@ -80,16 +76,6 @@ const AddDailyActivity = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isConnected, setIsConnected] = useState(true);
 
-  // ==== Ambil session ====
-  const getSession = async () => {
-    const token = await AsyncStorage.getItem('userToken');
-    const role = await AsyncStorage.getItem('userRole');
-    const userString = await AsyncStorage.getItem('userData');
-    const user = userString ? JSON.parse(userString) : null;
-    const site = user?.site || '';
-    return {token, role, site, user};
-  };
-
   // ==== Pantau koneksi ====
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener(state => {
@@ -103,7 +89,11 @@ const AddDailyActivity = () => {
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const {token, role, site, user} = await getSession();
+        const token = await AsyncStorage.getItem('userToken');
+        const role = await AsyncStorage.getItem('userRole');
+        const userString = await AsyncStorage.getItem('userData');
+        const user = userString ? JSON.parse(userString) : null;
+        const site = user?.site || '';
         if (!role || !site || !user) {
           Alert.alert(
             'Error',
@@ -169,15 +159,17 @@ const AddDailyActivity = () => {
           }
         }
 
-        // ==== Unit (dengan cache) ====
-        let unitData = [];
+        // ==== Unit (API atau cache) ====
+        let unitDataRaw = [];
         try {
           const dayActResp = await axios.get(
             `${API_BASE_URL}/dayActivities/createDailyAct`,
             {headers: {Authorization: `Bearer ${token}`}},
           );
           if (dayActResp.data.success) {
-            unitData = (dayActResp.data.data.unit || []).map((item, index) => ({
+            unitDataRaw = dayActResp.data.data.unit || [];
+            // mapping ke DropDownPicker
+            const unitData = unitDataRaw.map((item, index) => ({
               label: item.model,
               value: `${item.id}_${index}`,
               modelOnly: item.id,
@@ -201,9 +193,10 @@ const AddDailyActivity = () => {
             );
           }
         } catch {
+          // Jika offline/fetch gagal, ambil cache
           const cache = await AsyncStorage.getItem('dropdown_unit');
           if (cache) {
-            unitData = JSON.parse(cache);
+            const unitData = JSON.parse(cache);
             setUnitOptions(unitData);
             Alert.alert('Offline', 'Pilihan Unit diambil dari cache lokal.');
           } else {
@@ -237,8 +230,9 @@ const AddDailyActivity = () => {
     }
     let filterSite = site;
     if (!filterSite) {
-      const session = await getSession();
-      filterSite = session.site;
+      const userString = await AsyncStorage.getItem('userData');
+      const user = userString ? JSON.parse(userString) : null;
+      filterSite = user?.site || '';
     }
     const filtered = allAct
       .filter(
@@ -258,8 +252,9 @@ const AddDailyActivity = () => {
   // ==== Handler ganti KPI (dropdown) ====
   const onKpiChange = async selectedKpiId => {
     setFormData(prev => ({...prev, kpi_type: selectedKpiId, activity: ''}));
-    const session = await getSession();
-    filterActivityByKpi(selectedKpiId, null, session.site);
+    const userString = await AsyncStorage.getItem('userData');
+    const user = userString ? JSON.parse(userString) : null;
+    filterActivityByKpi(selectedKpiId, null, user?.site || '');
   };
 
   // ==== Input handler universal ====
@@ -495,10 +490,9 @@ const AddDailyActivity = () => {
             value={unitValue}
             items={unitOptions}
             setOpen={setUnitOpen}
-            setValue={setUnitValue}
-            onChangeValue={val => {
-              setUnitValue(val);
-              const selected = unitOptions.find(item => item.value === val);
+            setValue={val => {
+              setUnitValue(val());
+              const selected = unitOptions.find(item => item.value === val());
               handleChange('unit_detail', selected?.modelOnly || '');
             }}
             setItems={setUnitOptions}
