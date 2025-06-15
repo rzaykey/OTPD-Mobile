@@ -1,4 +1,4 @@
-import React, {useEffect, useState, useCallback} from 'react';
+import React, {useEffect, useState, useCallback, useRef} from 'react';
 import {
   SafeAreaView,
   Text,
@@ -10,10 +10,12 @@ import {
   Alert,
   UIManager,
   Platform,
+  ToastAndroid,
+  AppState,
 } from 'react-native';
 import {Picker} from '@react-native-picker/picker';
 import {tabelStyles as styles} from '../../styles/tabelStyles';
-import {useNavigation, useFocusEffect} from '@react-navigation/native';
+import {useNavigation} from '@react-navigation/native';
 import type {StackNavigationProp} from '@react-navigation/stack';
 import type {
   RootStackParamList,
@@ -24,25 +26,23 @@ import * as Animatable from 'react-native-animatable';
 import Icon from 'react-native-vector-icons/Ionicons';
 import API_BASE_URL from '../../config';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import NetInfo from '@react-native-community/netinfo';
 
-// Aktifkan animasi layout di Android
+// Aktifkan animasi layout Android
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// Opsi jumlah data per halaman
 const pageSizeOptions = [5, 10, 50, 100];
 
-// Tipe navigasi stack
 type NavigationProp = StackNavigationProp<RootStackParamList, 'TrainHours'>;
 
-const TrainHoursScreen: React.FC = () => {
-  // Safe area untuk padding bawah (biar tidak kepotong nav gesture bar)
+export default function TrainHoursScreen() {
+  const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
 
   // State
-  const navigation = useNavigation<NavigationProp>();
   const [data, setData] = useState<TrainHoursType[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -50,85 +50,156 @@ const TrainHoursScreen: React.FC = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isConnected, setIsConnected] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  // Fetch data API trainHours
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/trainHours`);
-      const json = await res.json();
-      // Pastikan data array (bukan null/object/error)
-      const arr = Array.isArray(json.data) ? json.data : [];
-      setData(arr);
-    } catch (err) {
-      setData([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+  // Background sync interval
+  const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // --- ONLINE/OFFLINE LISTENER ---
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsConnected(state.isConnected === true);
+    });
+    NetInfo.fetch().then(state => setIsConnected(state.isConnected === true));
+    return () => unsubscribe();
   }, []);
 
-  // Fetch pertama kali saat mount
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  // Fetch setiap screen di-focus
-  useFocusEffect(
-    useCallback(() => {
-      fetchData();
-    }, [fetchData]),
-  );
-
-  // Pull-to-refresh
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchData();
+  // --- AUTO BACKGROUND SYNC LOGIC ---
+  // 1. Function ambil summary dari server
+  const getServerSummary = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/trainHours/summary`);
+      const json = await res.json();
+      return {
+        max_id: String(json.max_id),
+        last_update: String(json.last_update),
+      };
+    } catch {
+      return {};
+    }
   };
 
-  // Expand/collapse card
+  // 2. AUTO SYNC DATA: bandingkan summary dengan cache
+  const fetchDataAutoSync = useCallback(
+    async (forceServer = false) => {
+      setIsSyncing(true);
+      setLoading(true);
+      try {
+        if (!isConnected) {
+          const cache = await AsyncStorage.getItem('cached_trainhours_list');
+          setData(cache ? JSON.parse(cache) : []);
+          setLoading(false);
+          setRefreshing(false);
+          setIsSyncing(false);
+          return;
+        }
+        // Ambil summary dari server
+        const {max_id: serverMaxId, last_update: serverLastUpdate} =
+          await getServerSummary();
+        const localMaxId = await AsyncStorage.getItem('trainhours_max_id');
+        const localLastUpdate = await AsyncStorage.getItem(
+          'trainhours_last_update',
+        );
+        // Kalau ada perubahan, fetch ulang
+        if (
+          forceServer ||
+          localMaxId !== serverMaxId ||
+          localLastUpdate !== serverLastUpdate
+        ) {
+          const res = await fetch(`${API_BASE_URL}/trainHours`);
+          const json = await res.json();
+          const arr = Array.isArray(json.data) ? json.data : [];
+          setData(arr);
+          await AsyncStorage.setItem(
+            'cached_trainhours_list',
+            JSON.stringify(arr),
+          );
+          await AsyncStorage.setItem('trainhours_max_id', serverMaxId || '');
+          await AsyncStorage.setItem(
+            'trainhours_last_update',
+            serverLastUpdate || '',
+          );
+        } else {
+          // Tidak ada perubahan, cukup pakai cache
+          const cache = await AsyncStorage.getItem('cached_trainhours_list');
+          setData(cache ? JSON.parse(cache) : []);
+        }
+        setLoading(false);
+        setRefreshing(false);
+        setIsSyncing(false);
+      } catch (e) {
+        const cache = await AsyncStorage.getItem('cached_trainhours_list');
+        setData(cache ? JSON.parse(cache) : []);
+        setLoading(false);
+        setRefreshing(false);
+        setIsSyncing(false);
+      }
+    },
+    [isConnected],
+  );
+
+  // --- BACKGROUND SYNC INTERVAL (misal 2 menit) ---
+  useEffect(() => {
+    if (!isConnected) return;
+    fetchDataAutoSync();
+    syncIntervalRef.current = setInterval(() => {
+      fetchDataAutoSync();
+    }, 2 * 60 * 1000);
+    const appStateSub = AppState.addEventListener('change', state => {
+      if (state === 'active') fetchDataAutoSync();
+    });
+    return () => {
+      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+      if (appStateSub) appStateSub.remove();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected, fetchDataAutoSync]);
+
+  // Manual force refresh
+  const handleForceRefresh = async () => {
+    await fetchDataAutoSync(true);
+    ToastAndroid.show('Data di-refresh dari server!', ToastAndroid.SHORT);
+  };
+
+  // Pull-to-refresh: cache only
+  const onRefresh = () => {
+    setRefreshing(true);
+    AsyncStorage.getItem('cached_trainhours_list').then(cache => {
+      setData(cache ? JSON.parse(cache) : []);
+      setRefreshing(false);
+    });
+  };
+
+  // Expand/collapse
   const toggleExpand = (id: number) => {
     setExpandedId(prev => (prev === id ? null : id));
   };
 
-  // Filter data by search
+  // Filter & paging
   const filteredData = data.filter(item => {
     const q = searchQuery.toLowerCase();
     return (
-      item.employee_name.toLowerCase().includes(q) ||
-      item.position.toLowerCase().includes(q) ||
-      item.training_type.toLowerCase().includes(q) ||
-      item.site.toLowerCase().includes(q)
+      (item.employee_name || '').toLowerCase().includes(q) ||
+      (item.position || '').toLowerCase().includes(q) ||
+      (item.training_type || '').toLowerCase().includes(q) ||
+      (item.site || '').toLowerCase().includes(q)
     );
   });
-
-  // Pagination logic
   const totalPages = Math.ceil(filteredData.length / pageSize);
   const paginatedData = filteredData.slice(
     (page - 1) * pageSize,
     page * pageSize,
   );
-
-  // Reset page ke 1 jika search atau pageSize berubah
+  // Reset page jika search/paging berubah
   useEffect(() => {
     if (totalPages > 0 && page > totalPages) {
       setPage(1);
     }
   }, [searchQuery, pageSize, totalPages, page]);
-
-  // Close expand card saat ganti search/page
   useEffect(() => {
     setExpandedId(null);
   }, [searchQuery, page, pageSize]);
-
-  // Spinner loading awal
-  if (loading && !refreshing) {
-    return (
-      <SafeAreaView style={styles.center}>
-        <ActivityIndicator size="large" color="#1E90FF" />
-      </SafeAreaView>
-    );
-  }
 
   // Navigasi ke edit
   const handleEdit = (item: TrainHoursType) => {
@@ -147,6 +218,15 @@ const TrainHoursScreen: React.FC = () => {
     );
   };
 
+  // Loading Spinner
+  if (loading && !refreshing) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <ActivityIndicator size="large" color="#1E90FF" />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView
       style={[
@@ -157,8 +237,60 @@ const TrainHoursScreen: React.FC = () => {
           paddingBottom: insets.bottom,
         },
       ]}>
-      {/* Judul */}
-      <Text style={styles.pageTitle}>Train Hours</Text>
+      {/* Header & Sync */}
+      <View style={{marginBottom: 10, marginTop: 2}}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}>
+          {/* Status Online/Offline */}
+          <View style={{alignItems: 'flex-end', flex: 1}}>
+            <Text
+              style={{
+                backgroundColor: isConnected ? '#d4edda' : '#f8d7da',
+                color: isConnected ? '#155724' : '#721c24',
+                paddingHorizontal: 12,
+                paddingVertical: 4,
+                borderRadius: 16,
+                fontWeight: 'bold',
+                fontSize: 13,
+                alignSelf: 'flex-end',
+                marginBottom: 3,
+              }}>
+              {isConnected ? '🟢 Online' : '🔴 Offline'}
+            </Text>
+            {isConnected && isSyncing && (
+              <ActivityIndicator
+                size="small"
+                color="#1E90FF"
+                style={{marginLeft: 8, marginBottom: 2}}
+              />
+            )}
+          </View>
+          {/* Tombol Refresh dari Server */}
+          {isConnected && (
+            <TouchableOpacity
+              style={{
+                backgroundColor: '#1E90FF',
+                borderRadius: 8,
+                paddingVertical: 7,
+                paddingHorizontal: 16,
+                alignSelf: 'flex-end',
+                marginLeft: 12,
+              }}
+              onPress={handleForceRefresh}
+              disabled={loading}>
+              <Text style={{color: '#fff', fontWeight: 'bold', fontSize: 14}}>
+                Ambil Ulang dari Server
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        {/* Judul */}
+        <Text style={[styles.pageTitle, {marginBottom: 2}]}>Train Hours</Text>
+      </View>
 
       {/* Search */}
       <TextInput
@@ -224,7 +356,7 @@ const TrainHoursScreen: React.FC = () => {
                   <View style={{alignItems: 'flex-end'}}>
                     <Text style={styles.cardSite}>{item.site}</Text>
                     <Text style={{fontSize: 12, color: '#888'}}>
-                      {item.date_activity.split(' ')[0]}
+                      {(item.date_activity || '').split(' ')[0]}
                     </Text>
                     <Icon
                       name={
@@ -236,7 +368,6 @@ const TrainHoursScreen: React.FC = () => {
                   </View>
                 </View>
               </TouchableOpacity>
-
               {/* Detail card */}
               {expanded && (
                 <View style={styles.cardDetail}>
@@ -245,7 +376,7 @@ const TrainHoursScreen: React.FC = () => {
                     {item.unit_class}
                   </Text>
                   <Text style={styles.cardDetailText}>
-                    Type Class: {item.unit_type.split(' ')[0]}
+                    Type Class: {(item.unit_type || '').split(' ')[0]}
                   </Text>
                   <Text style={styles.cardDetailText}>
                     HM Start: {item.hm_start} - HM End {item.hm_end}
@@ -313,6 +444,4 @@ const TrainHoursScreen: React.FC = () => {
       </View>
     </SafeAreaView>
   );
-};
-
-export default TrainHoursScreen;
+}

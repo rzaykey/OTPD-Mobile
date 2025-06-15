@@ -10,8 +10,10 @@ import {
   Platform,
   Alert,
   UIManager,
+  ToastAndroid,
 } from 'react-native';
 import {Picker} from '@react-native-picker/picker';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {tabelStyles as styles} from '../../styles/tabelStyles';
 import {useNavigation, useFocusEffect} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
@@ -19,29 +21,22 @@ import {RootStackParamList} from '../../navigation/types';
 import {MopData} from '../../navigation/types';
 import * as Animatable from 'react-native-animatable';
 import Icon from 'react-native-vector-icons/Ionicons';
+import NetInfo from '@react-native-community/netinfo';
 import API_BASE_URL from '../../config';
-import {useSafeAreaInsets} from 'react-native-safe-area-context'; // untuk safe area bawah
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Pilihan jumlah item per halaman
-const pageSizeOptions = [5, 10, 50, 100];
-
-// Aktifkan layout animation khusus Android
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// Tipe navigasi
+const pageSizeOptions = [5, 10, 50, 100];
 type NavigationProp = StackNavigationProp<RootStackParamList, 'Mop'>;
 
-/**
- * Halaman Mine Operator Performance (MOP)
- */
 export default function Mop() {
   const navigation = useNavigation<NavigationProp>();
-  const insets = useSafeAreaInsets(); // Untuk padding bawah agar tidak kepotong gesture nav
+  const insets = useSafeAreaInsets();
 
-  // State utama
   const [data, setData] = useState<MopData[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -49,42 +44,99 @@ export default function Mop() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isConnected, setIsConnected] = useState(true);
+  const [syncing, setSyncing] = useState(false);
 
-  /**
-   * Fetch data dari API
-   */
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/mopData`);
-      const json = await res.json();
-      // Backend bisa mengembalikan array langsung atau {data:[]}
-      const arr = Array.isArray(json) ? json : json.data || [];
-      setData(arr);
-    } catch (err) {
-      console.error('Fetch error:', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+  // Online/Offline Listener
+  useEffect(() => {
+    const unsub = NetInfo.addEventListener(state =>
+      setIsConnected(state.isConnected === true),
+    );
+    NetInfo.fetch().then(state => setIsConnected(state.isConnected === true));
+    return () => unsub();
   }, []);
 
-  // Fetch pertama
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  // Ambil summary MOP (total_count, max_id, last_update)
+  const getSummary = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mopData/summary`);
+      return await res.json(); // { total_count, max_id, last_update }
+    } catch {
+      return null;
+    }
+  };
 
-  // Fetch ulang tiap focus
-  useFocusEffect(
-    useCallback(() => {
-      fetchData();
-    }, [fetchData]),
+  /**
+   * Auto Sync: Cek summary.last_update, jika beda dengan cache -> fetch data baru!
+   */
+  const fetchDataAutoSync = useCallback(
+    async (forceServer = false) => {
+      setLoading(true);
+      setSyncing(true);
+      try {
+        if (!isConnected) {
+          // OFFLINE: ambil cache
+          const cache = await AsyncStorage.getItem('cached_mop_data');
+          setData(cache ? JSON.parse(cache) : []);
+          setLoading(false);
+          setRefreshing(false);
+          setSyncing(false);
+          return;
+        }
+
+        // ONLINE: Cek last_update
+        const summary = await getSummary();
+        const lastUpdate = summary?.last_update || '';
+        const localUpdate = await AsyncStorage.getItem('mop_last_update');
+
+        // Jika ada update, atau force refresh
+        if (forceServer || (lastUpdate && lastUpdate !== localUpdate)) {
+          // Fetch baru!
+          const res = await fetch(`${API_BASE_URL}/mopData`);
+          const json = await res.json();
+          const arr = Array.isArray(json) ? json : json.data || [];
+          setData(arr);
+          await AsyncStorage.setItem('cached_mop_data', JSON.stringify(arr));
+          await AsyncStorage.setItem('mop_last_update', lastUpdate || '');
+        } else {
+          // Tidak ada perubahan, load dari cache saja
+          const cache = await AsyncStorage.getItem('cached_mop_data');
+          setData(cache ? JSON.parse(cache) : []);
+        }
+      } catch (err) {
+        const cache = await AsyncStorage.getItem('cached_mop_data');
+        setData(cache ? JSON.parse(cache) : []);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+        setSyncing(false);
+      }
+    },
+    [isConnected],
   );
 
-  // Pull to refresh
+  // Run auto sync sekali saat load, & setiap koneksi online lagi
+  useEffect(() => {
+    fetchDataAutoSync();
+    let interval;
+    if (isConnected) {
+      interval = setInterval(() => fetchDataAutoSync(), 60 * 1000); // 1 menit, bebas ubah
+    }
+    return () => interval && clearInterval(interval);
+  }, [fetchDataAutoSync, isConnected]);
+
+  // Manual force refresh
+  const handleForceRefresh = async () => {
+    setSyncing(true);
+    await fetchDataAutoSync(true);
+    setSyncing(false);
+    ToastAndroid.show('Data di-refresh dari server!', ToastAndroid.SHORT);
+  };
+
+  // Pull to refresh (swipe down)
   const onRefresh = () => {
     setRefreshing(true);
-    fetchData();
+    fetchDataAutoSync(true);
   };
 
   // Expand/collapse card
@@ -92,7 +144,7 @@ export default function Mop() {
     setExpandedId(prev => (prev === id ? null : id));
   };
 
-  // Filter berdasarkan search
+  // Filter pencarian
   const filteredData = data.filter(item => {
     const q = searchQuery.toLowerCase();
     return (
@@ -102,14 +154,14 @@ export default function Mop() {
     );
   });
 
-  // Pagination logika
+  // Pagination
   const totalPages = Math.ceil(filteredData.length / pageSize);
   const paginatedData = filteredData.slice(
     (page - 1) * pageSize,
     page * pageSize,
   );
 
-  // Reset page ke 1 jika search atau pageSize berubah
+  // Reset page jika search/pageSize berubah
   useEffect(() => {
     if (totalPages > 0 && page > totalPages) {
       setPage(1);
@@ -126,6 +178,7 @@ export default function Mop() {
     return (
       <SafeAreaView style={styles.center}>
         <ActivityIndicator size="large" color="#1E90FF" />
+        <Text style={{marginTop: 12}}>Memuat data...</Text>
       </SafeAreaView>
     );
   }
@@ -137,7 +190,58 @@ export default function Mop() {
         paddingHorizontal: 8,
         paddingTop: 20,
         paddingBottom: insets.bottom,
+        backgroundColor: '#fff',
       }}>
+      {/* Status + Force Refresh */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 8,
+        }}>
+        <View style={{alignItems: 'flex-end', flex: 1}}>
+          <Text
+            style={{
+              backgroundColor: isConnected ? '#d4edda' : '#f8d7da',
+              color: isConnected ? '#155724' : '#721c24',
+              paddingHorizontal: 12,
+              paddingVertical: 4,
+              borderRadius: 16,
+              fontWeight: 'bold',
+              fontSize: 13,
+              alignSelf: 'flex-end',
+            }}>
+            {isConnected ? '🟢 Online' : '🔴 Offline'}
+            {syncing && (
+              <ActivityIndicator
+                size="small"
+                color="#1E90FF"
+                style={{marginLeft: 8, marginTop: 2}}
+              />
+            )}
+          </Text>
+        </View>
+        {isConnected && (
+          <TouchableOpacity
+            style={{
+              backgroundColor: syncing ? '#bbb' : '#1E90FF',
+              borderRadius: 8,
+              paddingVertical: 7,
+              paddingHorizontal: 16,
+              alignSelf: 'flex-end',
+              marginLeft: 12,
+              opacity: syncing ? 0.7 : 1,
+            }}
+            onPress={handleForceRefresh}
+            disabled={syncing}>
+            <Text style={{color: '#fff', fontWeight: 'bold', fontSize: 14}}>
+              Ambil Ulang dari Server
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
       {/* Judul halaman */}
       <Text style={styles.pageTitle}>Mine Operator Performance</Text>
 
@@ -179,7 +283,6 @@ export default function Mop() {
         keyExtractor={item => item.id.toString()}
         renderItem={({item, index}) => {
           const expanded = item.id === expandedId;
-          // const globalIndex = (page - 1) * pageSize + index + 1;
           return (
             <Animatable.View
               animation={expanded ? 'fadeInDown' : 'fadeInUp'}
