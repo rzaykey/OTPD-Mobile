@@ -17,14 +17,17 @@ export const OfflineQueueContext = createContext();
 export const OfflineQueueProvider = ({children}) => {
   const mentoringKey = 'mentoring_queue_offline';
   const dailyKey = 'daily_queue_offline';
+  const trainHoursKey = 'trainhours_queue_offline';
 
   const [mentoringQueueCount, setMentoringQueueCount] = useState(0);
+  const [trainHoursQueueCount, setTrainHoursQueueCount] = useState(0);
   const [dailyQueueCount, setDailyQueueCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
 
   const refreshQueueCount = useCallback(async () => {
     setMentoringQueueCount(await getOfflineQueueCount(mentoringKey));
     setDailyQueueCount(await getOfflineQueueCount(dailyKey));
+    setTrainHoursQueueCount(await getOfflineQueueCount(trainHoursKey));
   }, []);
 
   const pushMentoringQueue = useCallback(async () => {
@@ -40,6 +43,13 @@ export const OfflineQueueProvider = ({children}) => {
     setSyncing(false);
     refreshQueueCount();
   }, [refreshQueueCount]);
+  
+  const pushTrainHoursQueue = useCallback(async () => {
+    setSyncing(true);
+    await pushOfflineQueue(trainHoursKey, '/trainHours/store');
+    setSyncing(false);
+    refreshQueueCount();
+  }, [refreshQueueCount]);
 
   // AUTO-PUSH saat online
   const lastIsConnected = useRef(true);
@@ -49,11 +59,17 @@ export const OfflineQueueProvider = ({children}) => {
       if (lastIsConnected.current === false && state.isConnected === true) {
         await pushMentoringQueue();
         await pushDailyQueue();
+        await pushTrainHoursQueue();
       }
       lastIsConnected.current = state.isConnected;
     });
     return () => unsubscribe();
-  }, [pushMentoringQueue, pushDailyQueue, refreshQueueCount]);
+  }, [
+    pushMentoringQueue,
+    pushDailyQueue,
+    pushTrainHoursQueue,
+    refreshQueueCount,
+  ]);
 
   // Refresh count secara periodik (boleh dihapus jika ingin)
   useEffect(() => {
@@ -68,10 +84,12 @@ export const OfflineQueueProvider = ({children}) => {
       value={{
         mentoringQueueCount,
         dailyQueueCount,
+        trainHoursQueueCount,
         syncing,
         refreshQueueCount,
         pushMentoringQueue,
         pushDailyQueue,
+        pushTrainHoursQueue,
         clearOfflineQueue,
       }}>
       {children}

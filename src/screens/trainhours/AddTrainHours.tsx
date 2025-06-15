@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useState, useContext} from 'react';
 import {
   Text,
   TextInput,
@@ -9,26 +9,30 @@ import {
   TouchableOpacity,
   LayoutAnimation,
   UIManager,
+  ActivityIndicator,
 } from 'react-native';
-import axios from 'axios';
-import {addDailyAct} from '../../styles/addDailyAct';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DropDownPicker from 'react-native-dropdown-picker';
-import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
 import {useNavigation} from '@react-navigation/native';
+import {addDailyAct} from '../../styles/addDailyAct';
+import NetInfo from '@react-native-community/netinfo';
+import {OfflineQueueContext} from '../../utils/OfflineQueueContext';
+import {addQueueOffline} from '../../utils/offlineQueueHelper';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import axios from 'axios';
 import API_BASE_URL from '../../config';
-import {useSafeAreaInsets} from 'react-native-safe-area-context'; // Untuk safe area bawah
 
-// Aktifkan layout animation khusus Android
+const TRAINHOURS_QUEUE_KEY = 'trainhours_queue_offline';
+
+// Aktifkan animasi layout Android
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-/**
- * Komponen kartu collapsible untuk grouping setiap blok form
- */
+// Collapsible Card Component
 const CollapsibleCard = ({title, children}) => {
   const [expanded, setExpanded] = useState(true);
   const toggleExpand = () => {
@@ -45,19 +49,20 @@ const CollapsibleCard = ({title, children}) => {
   );
 };
 
-/**
- * Form Input Train Hours - Tambah Data
- */
 const AddTrainHours = () => {
   const navigation = useNavigation();
-  const insets = useSafeAreaInsets(); // Mendapatkan safe area (untuk padding bawah)
+  const insets = useSafeAreaInsets();
 
-  // State utama form
+  // Offline queue context
+  const {trainHoursQueueCount, pushTrainHoursQueue, syncing} =
+    useContext(OfflineQueueContext);
+
+  // State utama
   const [formData, setFormData] = useState({
     jde_no: '',
     employee_name: '',
     position: '',
-    training_type: '', // gunakan value ID
+    training_type: '',
     unit_class: '',
     unit_type: '',
     code: '',
@@ -71,7 +76,7 @@ const AddTrainHours = () => {
     date_activity: '',
   });
 
-  // State dropdown & opsi
+  // Dropdown states
   const [trainingTypeOptions, setTrainingTypeOptions] = useState([]);
   const [trainingTypeOpen, setTrainingTypeOpen] = useState(false);
   const [trainingTypeValue, setTrainingTypeValue] = useState(null);
@@ -104,103 +109,114 @@ const AddTrainHours = () => {
   // State tanggal
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [isConnected, setIsConnected] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  /**
-   * Helper ambil data session user
-   */
-  const getSession = async () => {
-    const token = await AsyncStorage.getItem('userToken');
-    const userString = await AsyncStorage.getItem('userData');
-    const user = userString ? JSON.parse(userString) : null;
-    const site = user?.site || '';
-    return {token, user, site};
-  };
-
-  /**
-   * Ambil master data & prefill employee info
-   */
+  // ------------- Ambil MASTER: Cek online, fallback ke cache -------------
   useEffect(() => {
-    const fetchInitialData = async () => {
+    const fetchMasterData = async () => {
       try {
-        const {token, user, site} = await getSession();
-        if (!token || !user) {
-          Alert.alert('Error', 'Session habis. Silakan login ulang.');
+        const net = await NetInfo.fetch();
+        setIsConnected(net.isConnected === true);
+
+        const userString = await AsyncStorage.getItem('userData');
+        const user = userString ? JSON.parse(userString) : {};
+
+        let master = null;
+        // 1. Kalau ONLINE: coba fetch API
+        if (net.isConnected) {
+          try {
+            const token = await AsyncStorage.getItem('userToken');
+            const response = await axios.get(
+              `${API_BASE_URL}/trainHours/create`,
+              {headers: {Authorization: `Bearer ${token}`}},
+            );
+            master = response.data?.data || {};
+            // Simpan ke cache (biar fresh)
+            await AsyncStorage.setItem(
+              'trainhours_master',
+              JSON.stringify(master),
+            );
+          } catch (err) {
+            // Kalau gagal online, fallback ke cache
+            const cache = await AsyncStorage.getItem('trainhours_master');
+            if (cache) master = JSON.parse(cache);
+          }
+        } else {
+          // 2. Kalau OFFLINE: langsung dari cache
+          const cache = await AsyncStorage.getItem('trainhours_master');
+          if (cache) master = JSON.parse(cache);
+        }
+
+        // Tidak dapat master? => error
+        if (!master) {
+          Alert.alert(
+            'Offline',
+            'Master data train hours belum tersedia. Silakan online dulu.',
+          );
           return;
         }
 
-        // Set data employee dari user login
-        setFormData(prev => ({
-          ...prev,
-          jde_no: user.username || '',
-          employee_name: user.name || '',
-          site: site,
-        }));
-
-        // Get master data dari API
-        const response = await axios.get(`${API_BASE_URL}/trainHours/create`, {
-          headers: {Authorization: `Bearer ${token}`},
-        });
-        if (response.data.status) {
-          const emp = response.data.data.employeeAuth;
+        // Set data employee (auto dari master.employeeAuth)
+        if (master.employeeAuth) {
           setFormData(prev => ({
             ...prev,
-            jde_no: emp.EmployeeId || '',
-            employee_name: emp.EmployeeName || '',
-            position: emp.JobTtlName || emp.PositionName || '',
-            site: site || '',
+            jde_no: master.employeeAuth.EmployeeId || prev.jde_no,
+            employee_name:
+              master.employeeAuth.EmployeeName || prev.employee_name,
+            position:
+              master.employeeAuth.JobTtlName ||
+              master.employeeAuth.PositionName ||
+              prev.position,
+            site: master.employeeAuth.Site || prev.site || user.site || '',
           }));
-
-          // Data Unit Type (class)
-          const typeUnitArr = (response.data.data.typeUnit || []).map(item => ({
-            label: item.class,
-            value: item.id,
-          }));
-          setUnitTypeOptions(typeUnitArr);
-
-          // Data Class Unit (model)
-          const classUnitArr = (response.data.data.classUnit || []).map(
-            item => ({
-              label: item.model,
-              value: item.id,
-              type: item.type,
-              class: item.class,
-            }),
-          );
-          setClassUnitArr(classUnitArr);
-          setFilteredClassUnitOptions([]);
-
-          // Data Kode Unit (code)
-          const codeUnitArr = (response.data.data.codeUnit || []).map(item => ({
-            label: item.no_unit || item.NO_UNIT || item.code,
-            value: item.id,
-            fid_model: item.fid_model,
-          }));
-          setAllCodeUnitArr(codeUnitArr);
-          setCodeOptions([]);
-
-          // Data KPI (training type)
-          const kpiArr = (response.data.data.kpi || []).map(item => ({
-            label: item.kpi,
-            value: item.id,
-          }));
-          setTrainingTypeOptions(kpiArr);
         } else {
-          Alert.alert(
-            'Error',
-            response.data.message || 'Gagal ambil data master',
-          );
+          setFormData(prev => ({
+            ...prev,
+            jde_no: user.username || '',
+            employee_name: user.name || '',
+            site: user.site || '',
+          }));
         }
-      } catch (error) {
-        Alert.alert('Error', 'Terjadi kesalahan saat ambil data awal');
+
+        // Type Unit
+        const typeUnitArr = (master.typeUnit || []).map(item => ({
+          label: item.class,
+          value: item.id,
+        }));
+        setUnitTypeOptions(typeUnitArr);
+
+        // Class Unit (Model)
+        const classArr = (master.classUnit || []).map(item => ({
+          label: item.model,
+          value: item.id,
+          type: item.type,
+          class: item.class,
+        }));
+        setClassUnitArr(classArr);
+
+        // Code Unit (No Unit)
+        const codeArr = (master.codeUnit || []).map(item => ({
+          label: item.no_unit || item.NO_UNIT || item.code,
+          value: item.id,
+          fid_model: item.fid_model,
+        }));
+        setAllCodeUnitArr(codeArr);
+
+        // KPI (training_type)
+        const kpiArr = (master.kpi || []).map(item => ({
+          label: item.kpi,
+          value: item.id,
+        }));
+        setTrainingTypeOptions(kpiArr);
+      } catch (err) {
+        Alert.alert('Error', 'Gagal load master train hours');
       }
     };
-
-    fetchInitialData();
+    fetchMasterData();
   }, []);
 
-  /**
-   * Handler cascading: ketika user pilih Unit Type (ID class)
-   */
+  // Handler cascading Unit Type
   const onChangeUnitType = val => {
     setFormData(prev => ({
       ...prev,
@@ -208,7 +224,6 @@ const AddTrainHours = () => {
       unit_class: '',
       code: '',
     }));
-
     // Filter classUnitArr berdasarkan class === val
     const filtered = classUnitArr.filter(
       item => String(item.class) === String(val),
@@ -217,16 +232,13 @@ const AddTrainHours = () => {
     setCodeOptions([]);
   };
 
-  /**
-   * Handler cascading: ketika user pilih Unit Class (model)
-   */
+  // Handler cascading Unit Class
   const onChangeUnitClass = val => {
     setFormData(prev => ({
       ...prev,
       unit_class: val,
       code: '',
     }));
-
     // Filter code berdasarkan fid_model === unit_class
     const filteredCode = allCodeUnitArr.filter(
       code => String(code.fid_model) === String(val),
@@ -234,9 +246,7 @@ const AddTrainHours = () => {
     setCodeOptions(filteredCode);
   };
 
-  /**
-   * Handler training_type (KPI) dropdown
-   */
+  // Training type (KPI)
   const onChangeTrainingType = val => {
     setTrainingTypeValue(val);
     setFormData(prev => ({
@@ -245,16 +255,12 @@ const AddTrainHours = () => {
     }));
   };
 
-  /**
-   * Handler umum perubahan text input
-   */
+  // Input handler
   const handleChange = (name, value) => {
     setFormData(prev => ({...prev, [name]: value}));
   };
 
-  /**
-   * Handler perubahan tanggal dari DateTimePicker
-   */
+  // Date handler
   const handleDateChange = (_event, selected) => {
     const currentDate = selected || selectedDate;
     setShowDatePicker(Platform.OS === 'ios');
@@ -263,9 +269,7 @@ const AddTrainHours = () => {
     handleChange('date_activity', formatted);
   };
 
-  /**
-   * Hitung otomatis total_hm & progres setiap hm_start/hm_end berubah
-   */
+  // Otomatis hitung total_hm & progres
   useEffect(() => {
     const start = Number(formData.hm_start) || 0;
     const end = Number(formData.hm_end) || 0;
@@ -278,10 +282,10 @@ const AddTrainHours = () => {
     }));
   }, [formData.hm_start, formData.hm_end, formData.plan_total_hm]);
 
-  /**
-   * Validasi dan submit form ke backend
-   */
+  // SUBMIT (OFFLINE FIRST)
   const handleSubmit = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     const requiredFields = [
       'jde_no',
       'employee_name',
@@ -305,15 +309,53 @@ const AddTrainHours = () => {
           'Validasi Gagal',
           `Field "${field.replace('_', ' ')}" wajib diisi.`,
         );
+        setIsSubmitting(false);
         return;
       }
     }
     try {
-      const token = await AsyncStorage.getItem('userToken');
-      if (!token) {
-        Alert.alert('Error', 'Token tidak ditemukan. Silakan login ulang.');
+      const payload = {...formData};
+      payload.id_local =
+        Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+
+      const net = await NetInfo.fetch();
+      if (!net.isConnected) {
+        await addQueueOffline(TRAINHOURS_QUEUE_KEY, payload);
+        Alert.alert(
+          'Offline',
+          'Data disimpan offline. Akan otomatis dikirim ke server saat online.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                setFormData({
+                  jde_no: '',
+                  employee_name: '',
+                  position: '',
+                  training_type: '',
+                  unit_class: '',
+                  unit_type: '',
+                  code: '',
+                  batch: '',
+                  plan_total_hm: '',
+                  hm_start: '',
+                  hm_end: '',
+                  total_hm: '',
+                  progres: '',
+                  site: '',
+                  date_activity: '',
+                });
+                navigation.navigate('TrainHours');
+              },
+            },
+          ],
+        );
+        setIsSubmitting(false);
         return;
       }
+
+      // If online langsung POST
+      const token = await AsyncStorage.getItem('userToken');
       const response = await axios.post(
         `${API_BASE_URL}/trainHours/store`,
         formData,
@@ -330,7 +372,6 @@ const AddTrainHours = () => {
           'Sukses',
           response.data.message || 'Data berhasil disimpan',
         );
-        // Reset form (optional, sesuai kebutuhan)
         setFormData({
           jde_no: '',
           employee_name: '',
@@ -353,18 +394,12 @@ const AddTrainHours = () => {
         Alert.alert('Gagal', response.data.message || 'Gagal menyimpan data');
       }
     } catch (error) {
-      if (error.response?.data?.errors) {
-        const messages = Object.values(error.response.data.errors)
-          .flat()
-          .join('\n');
-        Alert.alert('Validasi Gagal', messages);
-      } else {
-        Alert.alert('Error', 'Terjadi kesalahan saat menyimpan data');
-      }
+      Alert.alert('Error', 'Terjadi kesalahan saat menyimpan data');
     }
+    setIsSubmitting(false);
   };
 
-  // ------------------- RENDER FORM -------------------
+  // ---------- RENDER ----------
   return (
     <View style={{flex: 1, paddingBottom: insets.bottom}}>
       <KeyboardAwareScrollView
@@ -372,6 +407,45 @@ const AddTrainHours = () => {
         keyboardShouldPersistTaps="handled"
         extraScrollHeight={120}>
         <Text style={addDailyAct.header}>INPUT TRAIN HOURS</Text>
+
+        {/* Offline Badge & Push Button */}
+        {trainHoursQueueCount > 0 && (
+          <View
+            style={{
+              backgroundColor: '#e74c3c',
+              alignSelf: 'flex-end',
+              paddingHorizontal: 12,
+              paddingVertical: 4,
+              borderRadius: 16,
+              marginBottom: 8,
+            }}>
+            <Text style={{color: 'white'}}>
+              {trainHoursQueueCount} data offline menunggu jaringan!
+            </Text>
+            <TouchableOpacity
+              onPress={pushTrainHoursQueue}
+              style={{
+                marginTop: 6,
+                backgroundColor: '#27ae60',
+                paddingVertical: 6,
+                borderRadius: 12,
+                alignItems: 'center',
+                opacity: syncing ? 0.6 : 1,
+              }}
+              disabled={syncing}>
+              <Text style={{color: '#fff', fontWeight: 'bold'}}>
+                {syncing ? 'Mengirim...' : 'Push Sekarang ke Server'}
+              </Text>
+              {syncing && (
+                <ActivityIndicator
+                  size="small"
+                  color="#fff"
+                  style={{marginLeft: 8}}
+                />
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Employee Info Section */}
         <CollapsibleCard title="Employee Info">
@@ -557,7 +631,11 @@ const AddTrainHours = () => {
         </CollapsibleCard>
 
         {/* Tombol Simpan */}
-        <Button title="Simpan" onPress={handleSubmit} />
+        <Button
+          title={isSubmitting ? 'Menyimpan...' : 'Simpan'}
+          onPress={handleSubmit}
+          disabled={isSubmitting}
+        />
       </KeyboardAwareScrollView>
     </View>
   );

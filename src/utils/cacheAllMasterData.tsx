@@ -7,6 +7,7 @@ const TTL = 60 * 60 * 1000; // 1 jam (sebelumnya 10 menit)
 const unitTypes = [3, 2, 5, 4];
 
 export const cacheAllMasterData = async () => {
+  let result = {success: true, errors: []};
   try {
     const state = await NetInfo.fetch();
     if (!state.isConnected) return;
@@ -126,9 +127,23 @@ export const cacheAllMasterData = async () => {
       console.log('Gagal cache UNIT LIST:', err?.message || err);
     }
 
+    try {
+      const trainResp = await axios.get(`${API_BASE_URL}/trainHoursCache`);
+      // Simpan semua data master trainHours (employeeAuth, typeUnit, classUnit, codeUnit, kpi)
+      await AsyncStorage.setItem(
+        'trainhours_master',
+        JSON.stringify(trainResp.data?.data || {}),
+      );
+      console.log('Train Hours master cached');
+    } catch (err) {
+      console.log('Gagal cache TRAIN HOURS:', err);
+    }
+
     await AsyncStorage.setItem('cache_master_last', String(now));
     console.log('All master & list data cached/refreshed.');
   } catch (err) {
+    result.success = false;
+    result.errors.push(err?.message || err);
     console.log('Error caching master data:', err?.message || err);
   }
 };

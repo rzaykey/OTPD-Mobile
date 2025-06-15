@@ -4,14 +4,11 @@ import API_BASE_URL from '../config';
 
 const isPushingQueue = {};
 
-/**
- * Tambah data ke queue offline (hindari duplikat payload).
- */
 export const addQueueOffline = async (queueKey, payload) => {
   const id_local =
     payload.id_local ||
     Date.now() + '_' + Math.random().toString(36).slice(2, 10);
-  payload.id_local = id_local;
+  const fullPayload = {...payload, id_local};
   let arr = [];
   try {
     const str = await AsyncStorage.getItem(queueKey);
@@ -22,18 +19,15 @@ export const addQueueOffline = async (queueKey, payload) => {
     !arr.find(
       item =>
         JSON.stringify({...item, id_local: undefined}) ===
-        JSON.stringify({...payload, id_local: undefined}),
+        JSON.stringify({...fullPayload, id_local: undefined}),
     )
   ) {
-    arr.push(payload);
+    arr.push(fullPayload);
     await AsyncStorage.setItem(queueKey, JSON.stringify(arr));
   }
   return arr.length;
 };
 
-/**
- * Push antrian offline ke server.
- */
 export const pushOfflineQueue = async (queueKey, endpoint) => {
   if (isPushingQueue[queueKey]) return 0;
   isPushingQueue[queueKey] = true;
@@ -51,7 +45,7 @@ export const pushOfflineQueue = async (queueKey, endpoint) => {
   let successCount = 0;
   for (let i = 0; i < queue.length; i++) {
     try {
-      const {id_local, ...payload} = queue[i]; // jangan kirim id_local ke API
+      const {id_local, ...payload} = queue[i];
       const res = await axios.post(`${API_BASE_URL}${endpoint}`, payload, {
         headers: {
           'Content-Type': 'application/json',
@@ -59,7 +53,8 @@ export const pushOfflineQueue = async (queueKey, endpoint) => {
           Accept: 'application/json',
         },
       });
-      if (res.data?.success) {
+      // <--- Perhatikan status response backend
+      if (res.data?.success || res.data?.status) {
         successCount += 1;
       } else {
         failedData.push(queue[i]);
