@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useEffect} from 'react';
 import {NavigationContainer} from '@react-navigation/native';
 import AppNavigator from './src/navigation/AppNavigator';
 
@@ -11,8 +11,11 @@ import {persistQueryClient} from '@tanstack/react-query-persist-client';
 import {createAsyncStoragePersister} from '@tanstack/query-async-storage-persister';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import {useEffect} from 'react';
 import {cacheAllMasterData} from './src/utils/cacheAllMasterData';
+import {OfflineQueueProvider} from './src/utils/OfflineQueueContext';
+
+// Import MasterCacheProvider
+import {MasterCacheProvider} from './src/utils/MasterCacheContext';
 
 // Setup React Query client & persistor
 const queryClient = new QueryClient();
@@ -35,11 +38,16 @@ const App = () => {
   useEffect(() => {
     cacheAllMasterData();
   }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
-      <NavigationContainer>
-        <AppNavigator />
-      </NavigationContainer>
+      <OfflineQueueProvider>
+        <MasterCacheProvider>
+          <NavigationContainer>
+            <AppNavigator />
+          </NavigationContainer>
+        </MasterCacheProvider>
+      </OfflineQueueProvider>
     </QueryClientProvider>
   );
 };

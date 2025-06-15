@@ -10,6 +10,7 @@ import {
   UIManager,
   Alert,
   ToastAndroid,
+  ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
@@ -22,6 +23,10 @@ import API_BASE_URL from '../config';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
 import {useQueryClient} from '@tanstack/react-query';
+import {cacheAllMasterData} from '../utils/cacheAllMasterData';
+import {getOfflineMentoringQueueCount} from '../utils/utils';
+// Tambahan import (paling atas)
+import axios from 'axios';
 
 if (!(global as any)._IS_NEW_ARCHITECTURE_ENABLED) {
   UIManager.setLayoutAnimationEnabledExperimental &&
@@ -111,7 +116,6 @@ const defaultSummary = {
 
 const FullDashboard = ({navigation}: Props) => {
   const insets = useSafeAreaInsets();
-
   const [user, setUser] = useState<any>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState('1');
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
@@ -119,6 +123,31 @@ const FullDashboard = ({navigation}: Props) => {
   const [summary, setSummary] = useState(defaultSummary);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [isConnected, setIsConnected] = useState(true);
+  const [isCachingMaster, setIsCachingMaster] = useState(false); // <--- state baru
+  const [offlineQueueCount, setOfflineQueueCount] = useState(0);
+  const [isPushingOffline, setIsPushingOffline] = useState(false);
+
+  // Ambil jumlah queue offline saat dashboard tampil/masuk
+  const loadOfflineQueueCount = async () => {
+    const key = 'mentoring_queue_offline';
+    try {
+      const str = await AsyncStorage.getItem(key);
+      if (str) {
+        const arr = JSON.parse(str);
+        setOfflineQueueCount(Array.isArray(arr) ? arr.length : 0);
+      } else {
+        setOfflineQueueCount(0);
+      }
+    } catch {
+      setOfflineQueueCount(0);
+    }
+  };
+  // Initial load & update badge tiap Dashboard tampil
+  useEffect(() => {
+    loadOfflineQueueCount();
+    const unsubscribe = navigation.addListener('focus', loadOfflineQueueCount);
+    return unsubscribe;
+  }, [navigation]);
 
   useEffect(() => {
     fetchSummary();
@@ -129,7 +158,6 @@ const FullDashboard = ({navigation}: Props) => {
       setLoadingSummary(true);
       const res = await fetch(`${API_BASE_URL}/dashboard`);
       const json = await res.json();
-      // Merge supaya field yang tidak ada tetap ada (0)
       setSummary(
         json.data && typeof json.data === 'object'
           ? {...defaultSummary, ...json.data}
@@ -246,7 +274,6 @@ const FullDashboard = ({navigation}: Props) => {
     let shown = false;
     const unsubscribe = NetInfo.addEventListener(async state => {
       if (state.isConnected) {
-        // cek mutation React Query yang tertunda
         const mutations = queryClient.getMutationCache().getAll();
         const hasPaused = mutations.some(m => m.state.status === 'paused');
         if (hasPaused && !shown) {
@@ -257,6 +284,23 @@ const FullDashboard = ({navigation}: Props) => {
     });
     return () => unsubscribe();
   }, [queryClient]);
+
+  useEffect(() => {
+    cacheAllMasterData();
+  }, []);
+
+  // === FORCE UPDATE BUTTON ===
+  const handleForceUpdateMaster = async () => {
+    try {
+      setIsCachingMaster(true);
+      await cacheAllMasterData();
+      setIsCachingMaster(false);
+      ToastAndroid.show('Master data berhasil di-refresh!', ToastAndroid.SHORT);
+    } catch (err) {
+      setIsCachingMaster(false);
+      Alert.alert('Gagal', 'Refresh master gagal.\n' + (err?.message || ''));
+    }
+  };
 
   return (
     <SafeAreaView style={[styles.container, {paddingBottom: insets.bottom}]}>
@@ -295,6 +339,52 @@ const FullDashboard = ({navigation}: Props) => {
             <Text style={styles.statusTime}>
               {dayjs(dateTime).format('dddd, DD MMMM YYYY HH:mm:ss')}
             </Text>
+            {/* FORCE UPDATE BUTTON */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                marginTop: 6,
+              }}>
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: '#1976d2',
+                  borderRadius: 8,
+                  paddingVertical: 5,
+                  paddingHorizontal: 12,
+                  marginRight: 6,
+                  opacity: isCachingMaster ? 0.6 : 1,
+                }}
+                onPress={handleForceUpdateMaster}
+                disabled={isCachingMaster}>
+                <Icon name="refresh-outline" size={18} color="#fff" />
+                <Text
+                  style={{
+                    color: '#fff',
+                    marginLeft: 5,
+                    fontWeight: 'bold',
+                    fontSize: 13,
+                  }}>
+                  Force Update Data
+                </Text>
+                {isCachingMaster && (
+                  <ActivityIndicator
+                    size={14}
+                    color="#fff"
+                    style={{marginLeft: 8}}
+                  />
+                )}
+              </TouchableOpacity>
+              {/* Status sinkronisasi */}
+              {isCachingMaster && (
+                <Text
+                  style={{fontSize: 11, color: '#1976d2', fontWeight: 'bold'}}>
+                  Syncing data...
+                </Text>
+              )}
+            </View>
           </View>
         </View>
         <Animatable.View

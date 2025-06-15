@@ -8,8 +8,8 @@ import {
   TextInput,
   ScrollView,
   UIManager,
-  FlatList,
   Button,
+  Alert,
 } from 'react-native';
 import axios from 'axios';
 import RNPickerSelect from 'react-native-picker-select';
@@ -21,16 +21,16 @@ import {pickerSelectStyles} from '../../styles/pickerSelectStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useNavigation} from '@react-navigation/native';
 import API_BASE_URL from '../../config';
+import NetInfo from '@react-native-community/netinfo';
+import DropDownPicker from 'react-native-dropdown-picker';
 
-// Aktifkan LayoutAnimation untuk Android
+// --- UI/Anim Android
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-/**
- * Komponen Card yang bisa di-expand/collapse
- */
+// --- Expandable Card
 const ToggleCard = ({title, children, defaultExpanded = true}) => {
   const [expanded, setExpanded] = useState(defaultExpanded);
   return (
@@ -50,14 +50,11 @@ const ToggleCard = ({title, children, defaultExpanded = true}) => {
   );
 };
 
-/**
- * Halaman Tambah Data Mentoring
- */
 const AddDataMentoring = ({route}) => {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
 
-  // --- State: Data & Form ---
+  // --- State
   const [operatorJDE, setOperatorJDE] = useState(null);
   const [operatorName, setOperatorName] = useState(null);
   const [trainerName, setTrainerName] = useState(null);
@@ -85,35 +82,141 @@ const AddDataMentoring = ({route}) => {
   const [dateMentoring, setDateMentoring] = useState(new Date());
   const [startTime, setStartTime] = useState(new Date());
   const [endTime, setEndTime] = useState(new Date());
-  const [editableDetails, setEditableDetails] = React.useState([]);
+  const [editableDetails, setEditableDetails] = useState([]);
   const [area, setArea] = useState(null);
   const [points, setPoints] = useState({});
+  const [isConnected, setIsConnected] = useState(true);
+  const [isPushingQueue, setIsPushingQueue] = useState(false);
+  const [offlineQueueCount, setOfflineQueueCount] = useState(0);
 
-  // --- Fetch indikator berdasarkan unitTypeId ---
+  // --- DropDownPicker State
+  const [operatorOpen, setOperatorOpen] = useState(false);
+  const [operatorItems, setOperatorItems] = useState([]);
+
   useEffect(() => {
-    if (unitTypeId) {
-      fetchIndicatorsByType(unitTypeId);
-    }
-  }, [unitTypeId]);
-
-  // Ambil indikator per unit type dari API
-  const fetchIndicatorsByType = async unitTypeId => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/mentoring/createData?type_mentoring=${unitTypeId}`,
+    if (searchResults.length) {
+      setOperatorItems(
+        searchResults.map((item, idx) => ({
+          label: `${item.employeeId} - ${item.EmployeeName}`,
+          value: `${item.employeeId}_${idx}`,
+          item: item,
+        })),
       );
-      const result = await response.json();
-      if (result.success && typeof result?.data?.indicators === 'object') {
-        setIndicators(result.data.indicators);
-      } else {
-        setIndicators({});
-      }
-    } catch (err) {
-      setIndicators({});
+    } else {
+      setOperatorItems([]);
     }
-  };
+  }, [searchResults]);
 
-  // Prefill info user login untuk trainer
+  // --- Detect online/offline
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsConnected(state.isConnected === true);
+    });
+    NetInfo.fetch().then(state => setIsConnected(state.isConnected === true));
+    return () => unsubscribe();
+  }, []);
+
+  // --- Pantau jumlah offline queue (setiap masuk page dan selesai push)
+  useEffect(() => {
+    const cekQueue = async () => {
+      try {
+        const q = await AsyncStorage.getItem('mentoring_queue_offline');
+        setOfflineQueueCount(q ? JSON.parse(q).length : 0);
+      } catch {
+        setOfflineQueueCount(0);
+      }
+    };
+    cekQueue();
+    const interval = setInterval(cekQueue, 5000);
+    return () => clearInterval(interval);
+  }, [isPushingQueue, loading]);
+
+  // --- Prefill draft (checkbox indikator tetap walau offline)
+  useEffect(() => {
+    const prefillForm = async () => {
+      const draft = await AsyncStorage.getItem(
+        'mentoring_editable_details_temp',
+      );
+      if (draft) setEditableDetails(JSON.parse(draft));
+    };
+    prefillForm();
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.setItem(
+      'mentoring_editable_details_temp',
+      JSON.stringify(editableDetails),
+    );
+  }, [editableDetails]);
+
+  // --- Ambil master data dari cache/online
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        let master = {};
+        if (isConnected) {
+          const res = await axios.get(`${API_BASE_URL}/mentoring/createData`);
+          master = res.data?.data || {};
+          await AsyncStorage.setItem(
+            'mentoring_master',
+            JSON.stringify(master),
+          );
+        } else {
+          const cache = await AsyncStorage.getItem('mentoring_master');
+          if (cache) master = JSON.parse(cache);
+          else {
+            Alert.alert(
+              'Offline',
+              'Data master belum tersedia. Silakan online dulu.',
+            );
+            setLoading(false);
+            return;
+          }
+        }
+        setRawSiteList(master.siteList || []);
+        setModelUnitRaw(master.models || []);
+        setUnitRaw(master.units || []);
+        setEditableDetails(master.details || []);
+        setPoints({});
+      } catch (error) {
+        Alert.alert('Gagal mengambil data', error.message || 'Cek koneksi');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [isConnected]);
+
+  // --- Ambil site prioritas online
+  useEffect(() => {
+    let didCancel = false;
+    const fetchMasterSite = async () => {
+      setLoading(true);
+      let siteData = [];
+      try {
+        const res = await axios.get(`${API_BASE_URL}/getSite`);
+        siteData = res.data?.data || [];
+        await AsyncStorage.setItem(
+          'mentoring_master_site',
+          JSON.stringify(siteData),
+        );
+      } catch (err) {
+        const cache = await AsyncStorage.getItem('mentoring_master_site');
+        siteData = cache ? JSON.parse(cache) : [];
+      }
+      if (!didCancel) {
+        setRawSiteList(siteData || []);
+        setLoading(false);
+      }
+    };
+    fetchMasterSite();
+    return () => {
+      didCancel = true;
+    };
+  }, []);
+
+  // --- Prefill user info (trainer)
   useEffect(() => {
     const fetchUser = async () => {
       try {
@@ -124,47 +227,67 @@ const AddDataMentoring = ({route}) => {
           setTrainerName(user.name);
           setSite(user.site);
         }
-      } catch (error) {}
+      } catch {}
     };
     fetchUser();
   }, []);
 
-  // Ambil data master: site, unit, model, dst
+  // --- Fetch indikator by type (cache per tipe)
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const res = await axios.get(`${API_BASE_URL}/mentoring/createData`);
-        const {
-          siteList: site_list,
-          models: model_unit,
-          units: unit,
-          details,
-        } = res.data?.data || {};
-
-        setRawSiteList(site_list || []);
-        setModelUnitRaw(model_unit || []);
-        setUnitRaw(unit || []);
-        setEditableDetails(details || []);
-        setPoints({});
-      } catch (error) {
-        alert('Gagal mengambil data');
-      } finally {
-        setLoading(false);
+    const fetchIndicatorsByType = async () => {
+      if (!unitTypeId) return setIndicators({});
+      let data = {};
+      const cache = await AsyncStorage.getItem(
+        `mentoring_indicators_${unitTypeId}`,
+      );
+      if (cache) {
+        data = JSON.parse(cache);
+        setIndicators(data);
+        if (isConnected) {
+          try {
+            const response = await axios.get(
+              `${API_BASE_URL}/mentoring/createData?type_mentoring=${unitTypeId}`,
+            );
+            const freshData = response.data?.data?.indicators || {};
+            await AsyncStorage.setItem(
+              `mentoring_indicators_${unitTypeId}`,
+              JSON.stringify(freshData),
+            );
+            setIndicators(freshData);
+          } catch {}
+        }
+      } else if (isConnected) {
+        try {
+          const response = await axios.get(
+            `${API_BASE_URL}/mentoring/createData?type_mentoring=${unitTypeId}`,
+          );
+          data = response.data?.data?.indicators || {};
+          await AsyncStorage.setItem(
+            `mentoring_indicators_${unitTypeId}`,
+            JSON.stringify(data),
+          );
+          setIndicators(data);
+        } catch {
+          setIndicators({});
+        }
+      } else {
+        setIndicators({});
       }
     };
-    fetchData();
-  }, []);
+    fetchIndicatorsByType();
+  }, [unitTypeId, isConnected]);
 
-  // Unit Type dari modelUnitRaw
+  // --- Dropdown builder (site, model, unit)
   useEffect(() => {
-    if (!modelUnitRaw.length) return;
+    if (!modelUnitRaw.length) return setUnitTypes([]);
     const types = Array.from(
-      new Set(modelUnitRaw.map(m => m.class.trim())),
-    ).map(t => ({label: t, value: t}));
+      new Set(modelUnitRaw.map(m => m.class && m.class.trim())),
+    )
+      .filter(Boolean)
+      .map(t => ({label: t, value: t}));
     setUnitTypes(types);
   }, [modelUnitRaw]);
 
-  // Model Unit (filter by type)
   useEffect(() => {
     if (!unitTypeId || !modelUnitRaw.length) {
       setModelUnits([]);
@@ -172,13 +295,12 @@ const AddDataMentoring = ({route}) => {
       return;
     }
     const filteredModels = modelUnitRaw
-      .filter(m => m.class === String(unitTypeId))
+      .filter(m => String(m.class) === String(unitTypeId))
       .map(m => ({label: m.model, value: String(m.id)}));
     setModelUnits(filteredModels);
     setUnitModel(null);
   }, [unitTypeId, modelUnitRaw]);
 
-  // Unit Number (filter by model)
   useEffect(() => {
     if (!unitModel || !unitRaw.length) {
       setUnitNumbers([]);
@@ -192,23 +314,35 @@ const AddDataMentoring = ({route}) => {
     setUnitNumber(null);
   }, [unitModel, unitRaw]);
 
-  // Search operator by query (API)
+  // --- Search operator (API/cached)
   const searchOperator = async text => {
     setOperatorQuery(text);
     setShowResults(true);
-    if (text.length >= 2) {
-      try {
+    if (text.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    try {
+      let arr = [];
+      if (isConnected) {
         const response = await axios.get(
           `${API_BASE_URL}/getEmployeeOperator?q=${text}`,
         );
-        setSearchResults(response.data);
-      } catch (error) {}
-    } else {
+        arr = response.data || [];
+        await AsyncStorage.setItem(
+          'mentoring_operator_search',
+          JSON.stringify(arr),
+        );
+      } else {
+        const cache = await AsyncStorage.getItem('mentoring_operator_search');
+        arr = cache ? JSON.parse(cache) : [];
+      }
+      setSearchResults(arr);
+    } catch {
       setSearchResults([]);
     }
   };
 
-  // Pilih operator dari hasil search
   const handleSelectOperator = item => {
     setOperatorJDE(item.employeeId);
     setOperatorName(item.EmployeeName);
@@ -216,7 +350,7 @@ const AddDataMentoring = ({route}) => {
     setShowResults(false);
   };
 
-  // Checkbox per indikator
+  // --- Checkbox per indikator
   const toggleCheckbox = (fid, field) => {
     setEditableDetails(prev => {
       const existing = prev.find(d => d.fid_indicator === fid);
@@ -240,7 +374,6 @@ const AddDataMentoring = ({route}) => {
     });
   };
 
-  // Update note per indikator
   const updateNote = (fid, note) => {
     setEditableDetails(prev => {
       const existing = prev.find(d => d.fid_indicator === fid);
@@ -262,7 +395,7 @@ const AddDataMentoring = ({route}) => {
     });
   };
 
-  // Kalkulasi points per kategori (live)
+  // --- Kalkulasi point kategori
   const calculatePoints = details => {
     const newPoints = {};
     for (const kategori in indicators) {
@@ -288,13 +421,12 @@ const AddDataMentoring = ({route}) => {
     }
     return newPoints;
   };
-
   useEffect(() => {
     const updatedPoints = calculatePoints(editableDetails);
     setPoints(updatedPoints);
   }, [editableDetails, indicators]);
 
-  // Handler Date/Time Picker
+  // --- Handler Date/Time
   const onChangeDate = (event, selectedDate) => {
     if (Platform.OS === 'android') setShowDatePicker(false);
     if (event.type === 'dismissed') return;
@@ -311,7 +443,6 @@ const AddDataMentoring = ({route}) => {
     if (selectedTime) setEndTime(selectedTime);
   };
 
-  // Expand/collapse kategori indikator
   const toggleCategoryVisibility = kategori => {
     setVisibleCategories(prev => ({
       ...prev,
@@ -319,7 +450,7 @@ const AddDataMentoring = ({route}) => {
     }));
   };
 
-  // Rekap points observasi/mentoring per kategori
+  // --- Live Rekap Points
   const renderLivePointsSection = type => {
     const isObs = type === 'observasi';
     const dataFiltered = Object.values(points);
@@ -373,20 +504,22 @@ const AddDataMentoring = ({route}) => {
       </ToggleCard>
     );
   };
-
-  // --- Submit form ke backend
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  // --- SUBMIT
   const handleSubmit = async () => {
+    if (isSubmitting) {
+      console.log('Prevented duplicate submit');
+      return;
+    }
+    setIsSubmitting(true);
     try {
       setLoading(true);
       const token = await AsyncStorage.getItem('userToken');
-      if (!token)
-        throw new Error('Sesi telah berakhir. Silakan login kembali.');
       if (!unitType || !unitModel || !unitNumber)
         throw new Error('Harap lengkapi semua informasi unit');
       if (!operatorJDE || !operatorName || !site || !area)
         throw new Error('Harap lengkapi semua informasi operator');
 
-      // Kalkulasi poin
       const calcPoints = type => {
         const isObs = type === 'observasi';
         const dataFiltered = Object.values(points);
@@ -404,11 +537,8 @@ const AddDataMentoring = ({route}) => {
             : 0;
         return {totalYScore, averagePoint};
       };
-
       const observasi = calcPoints('observasi');
       const mentoring = calcPoints('mentoring');
-
-      // Payload API
       const payload = {
         IDTypeMentoring: unitTypeId,
         IDtrainer: trainerJDE,
@@ -437,7 +567,39 @@ const AddDataMentoring = ({route}) => {
           is_mentoring: detail.is_mentoring,
           note_observasi: detail.note_observasi || '',
         })),
+        _offline_id: Date.now() + '-' + Math.random().toString(36).slice(2, 9), // anti duplikat lokal
       };
+      console.log('Will submit payload:', JSON.stringify(payload));
+
+      if (!isConnected) {
+        const queueKey = 'mentoring_queue_offline';
+        const prev = await AsyncStorage.getItem(queueKey);
+        let arr = prev ? JSON.parse(prev) : [];
+        // Anti-duplikat
+        if (
+          arr.find(
+            item =>
+              JSON.stringify({...item, _offline_id: undefined}) ===
+              JSON.stringify({...payload, _offline_id: undefined}),
+          )
+        ) {
+          Alert.alert('Sudah Ada', 'Data ini sudah ada di antrian offline.');
+          setLoading(false);
+          return;
+        }
+        arr.push(payload);
+        await AsyncStorage.setItem(queueKey, JSON.stringify(arr));
+        const queue = await AsyncStorage.getItem(queueKey);
+        console.log('Current queue:', queue);
+
+        await AsyncStorage.removeItem('mentoring_editable_details_temp');
+        setOfflineQueueCount(arr.length);
+        Alert.alert('Berhasil (Offline)', 'Data akan dikirim saat online.');
+        navigation.goBack();
+        return;
+      }
+
+      if (!token) throw new Error('Sesi habis, login kembali');
       const response = await axios.post(
         `${API_BASE_URL}/mentoring/store`,
         payload,
@@ -449,34 +611,26 @@ const AddDataMentoring = ({route}) => {
           },
         },
       );
-
       if (response.data.success) {
-        alert('Data mentoring berhasil ditambahkan!');
+        await AsyncStorage.removeItem('mentoring_editable_details_temp');
+        setOfflineQueueCount(0);
+        Alert.alert('Sukses', 'Data mentoring berhasil ditambahkan!');
         if (navigation.canGoBack()) navigation.goBack();
         else navigation.navigate('FullDashboard');
       } else {
         throw new Error(response.data.message || 'Gagal menambah data');
       }
     } catch (error) {
-      if (error.response?.status === 401) {
-        await AsyncStorage.removeItem('userToken');
-        alert('Sesi telah berakhir. Silakan login kembali.');
-        navigation.reset({index: 0, routes: [{name: 'Login'}]});
-      } else {
-        alert(
-          `Error: ${
-            error.response?.data?.message ||
-            error.message ||
-            'Terjadi kesalahan'
-          }`,
-        );
-      }
+      Alert.alert(
+        'Error',
+        error.response?.data?.message || error.message || 'Terjadi kesalahan',
+      );
     } finally {
       setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
-  // --- Loader
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -485,7 +639,7 @@ const AddDataMentoring = ({route}) => {
     );
   }
 
-  // --- Render UI
+  // --- UI
   return (
     <ScrollView
       style={{flex: 1}}
@@ -494,7 +648,38 @@ const AddDataMentoring = ({route}) => {
       <View style={styles.container}>
         <Text style={styles.title}>Tambah Data Mentoring {unitType}</Text>
 
-        {/* Header (trainer/operator/site) */}
+        {/* Badge + Tombol Push Manual */}
+        {offlineQueueCount > 0 && (
+          <View
+            style={{
+              backgroundColor: '#e74c3c',
+              alignSelf: 'flex-end',
+              paddingHorizontal: 12,
+              paddingVertical: 4,
+              borderRadius: 16,
+              marginBottom: 8,
+            }}>
+            <Text style={{color: 'white'}}>
+              {offlineQueueCount} data offline menunggu jaringan!
+            </Text>
+          </View>
+        )}
+
+        {isPushingQueue && (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              marginBottom: 8,
+            }}>
+            <ActivityIndicator size="small" color="#1E90FF" />
+            <Text style={{marginLeft: 6, fontSize: 13}}>
+              Mengirim data offline...
+            </Text>
+          </View>
+        )}
+
+        {/* HEADER */}
         <View style={styles.card}>
           <TouchableOpacity
             style={styles.toggleButton}
@@ -527,50 +712,50 @@ const AddDataMentoring = ({route}) => {
                   />
                 </View>
               </View>
-              {/* Operator Search & Select */}
+              {/* Operator */}
               <View style={{padding: 1, marginBottom: 16}}>
                 <Text style={{fontSize: 16, marginBottom: 8}}>Operator</Text>
-                <View style={{position: 'relative'}}>
-                  <TextInput
+                <View style={{zIndex: 1000, marginBottom: 10}}>
+                  <DropDownPicker
+                    open={operatorOpen}
+                    value={operatorJDE}
+                    items={operatorItems}
+                    setOpen={setOperatorOpen}
+                    setValue={val => {
+                      setOperatorOpen(false);
+                      const selected = operatorItems.find(
+                        i => i.value === val(),
+                      );
+                      if (selected) {
+                        setOperatorJDE(selected.item.employeeId);
+                        setOperatorName(selected.item.EmployeeName);
+                        setOperatorQuery(
+                          `${selected.item.employeeId} - ${selected.item.EmployeeName}`,
+                        );
+                        setShowResults(false);
+                      }
+                    }}
+                    setItems={setOperatorItems}
                     placeholder="Cari Operator JDE"
-                    value={operatorQuery}
-                    onChangeText={searchOperator}
-                    style={[
-                      styles.value,
-                      {
-                        paddingVertical: 10,
-                        backgroundColor: '#fff',
-                        borderWidth: 1,
-                        borderColor: '#111',
-                      },
-                    ]}
+                    searchable={true}
+                    searchPlaceholder="Cari Operator JDE"
+                    onChangeSearchText={text => {
+                      searchOperator(text);
+                      setOperatorQuery(text);
+                      setShowResults(true);
+                    }}
+                    listMode="MODAL"
+                    zIndex={1500}
+                    zIndexInverse={1000}
+                    style={{
+                      borderColor: '#111',
+                      borderRadius: 6,
+                      minHeight: 48,
+                    }}
+                    textStyle={{fontSize: 16}}
+                    disabled={loading}
                   />
-                  {/* Dropdown Operator */}
-                  {showResults && searchResults.length > 0 && (
-                    <View style={styles.operatorDropdownBox}>
-                      <FlatList
-                        data={searchResults}
-                        keyExtractor={item => item.employeeId}
-                        renderItem={({item}) => (
-                          <TouchableOpacity
-                            onPress={() => handleSelectOperator(item)}
-                            style={{
-                              padding: 12,
-                              borderBottomWidth: 1,
-                              borderBottomColor: '#eee',
-                            }}>
-                            <Text
-                              style={{
-                                color: '#111',
-                              }}>{`${item.employeeId} - ${item.EmployeeName}`}</Text>
-                          </TouchableOpacity>
-                        )}
-                        keyboardShouldPersistTaps="handled"
-                      />
-                    </View>
-                  )}
                 </View>
-                {/* Info Operator terpilih */}
                 <View style={styles.operatorBox}>
                   <Text style={{fontSize: 16, marginBottom: 8}}>
                     Operator JDE: {operatorJDE}
@@ -591,10 +776,24 @@ const AddDataMentoring = ({route}) => {
               <View style={styles.row}>
                 <View style={styles.half}>
                   <Text style={styles.label}>Site</Text>
-                  <TextInput
+                  <RNPickerSelect
+                    onValueChange={setSite}
+                    items={rawSiteList
+                      .filter(
+                        site => !!site && site.code_site && site.name_site,
+                      )
+                      .map((site, idx) => ({
+                        label: site.name_site,
+                        value: site.code_site,
+                        key: `${site.code_site}_${idx}`,
+                      }))}
                     value={site}
-                    editable={false}
-                    style={styles.input}
+                    placeholder={{label: 'Pilih Site', value: null}}
+                    style={pickerSelectStyles}
+                    useNativeAndroidPickerStyle={false}
+                    Icon={() => (
+                      <Icon name="chevron-down" size={20} color="#9ca3af" />
+                    )}
                   />
                 </View>
                 <View style={styles.half}>
@@ -602,7 +801,7 @@ const AddDataMentoring = ({route}) => {
                   <TextInput
                     value={area}
                     onChangeText={setArea}
-                    placeholder="Masukkan nama Site"
+                    placeholder="Masukkan Area"
                     style={styles.input}
                   />
                 </View>
@@ -824,7 +1023,11 @@ const AddDataMentoring = ({route}) => {
         {renderLivePointsSection('observasi')}
         {renderLivePointsSection('mentoring')}
 
-        <Button title="Simpan" onPress={handleSubmit} />
+        <Button
+          title={loading ? 'Menyimpan...' : 'Simpan'}
+          onPress={handleSubmit}
+          disabled={loading || isPushingQueue}
+        />
       </View>
     </ScrollView>
   );

@@ -10,9 +10,10 @@ import {
   Alert,
   UIManager,
   Platform,
+  ToastAndroid,
 } from 'react-native';
 import {Picker} from '@react-native-picker/picker';
-import {useSafeAreaInsets} from 'react-native-safe-area-context'; // PENTING untuk bottom padding aman!
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {tabelStyles as styles} from '../../styles/tabelStyles';
 import {useNavigation, useFocusEffect} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
@@ -20,24 +21,21 @@ import {RootStackParamList, MentoringData} from '../../navigation/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Animatable from 'react-native-animatable';
 import Icon from 'react-native-vector-icons/Ionicons';
+import NetInfo from '@react-native-community/netinfo';
 import API_BASE_URL from '../../config';
 
-// Enable LayoutAnimation untuk Android gesture/expand animation
+// Enable LayoutAnimation for Android
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// Pilihan page size (jumlah data per halaman)
 const pageSizeOptions = [5, 10, 50, 100];
 type NavigationProp = StackNavigationProp<RootStackParamList, 'Data'>;
 
-/**
- * Komponen utama Data Mentoring (list, search, pagination, edit, delete)
- */
 export default function Data() {
   const navigation = useNavigation<NavigationProp>();
-  const insets = useSafeAreaInsets(); // --> Supaya UI aman dari notch/gesture bar
+  const insets = useSafeAreaInsets();
 
   // State utama
   const [data, setData] = useState<MentoringData[]>([]);
@@ -47,40 +45,103 @@ export default function Data() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isConnected, setIsConnected] = useState(true);
+  const [syncing, setSyncing] = useState(false);
 
-  /**
-   * Ambil data dari API
-   */
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/mentoring-data`);
-      const json = await res.json();
-      // Pastikan response selalu array
-      const arr = Array.isArray(json) ? json : json.data || [];
-      setData(arr);
-    } catch (err) {
-      console.error('Fetch error:', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+  // -- Online/Offline Detection
+  useEffect(() => {
+    const unsub = NetInfo.addEventListener(state =>
+      setIsConnected(state.isConnected === true),
+    );
+    NetInfo.fetch().then(state => setIsConnected(state.isConnected === true));
+    return () => unsub();
   }, []);
 
-  // Load data saat mount & setiap focus ke screen ini
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-  useFocusEffect(
-    useCallback(() => {
-      fetchData();
-    }, [fetchData]),
+  // Ambil summary (untuk auto-update)
+  const getSummary = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mentoring/summaryMentoring`);
+      return await res.json(); // { total_count, max_id, last_update }
+    } catch {
+      return null;
+    }
+  };
+
+  /**
+   * Auto Sync: Cek summary.last_update, jika beda dengan cache -> fetch data baru!
+   */
+  const fetchDataAutoSync = useCallback(
+    async (forceServer = false) => {
+      setLoading(true);
+      setSyncing(true);
+      try {
+        if (!isConnected) {
+          // OFFLINE: ambil cache
+          const cache = await AsyncStorage.getItem('cached_mentoring_data');
+          setData(cache ? JSON.parse(cache) : []);
+          setLoading(false);
+          setRefreshing(false);
+          setSyncing(false);
+          return;
+        }
+
+        // ONLINE: Cek last_update
+        const summary = await getSummary();
+        const lastUpdate = summary?.last_update || '';
+        const localUpdate = await AsyncStorage.getItem('mentoring_last_update');
+
+        // Jika ada update, atau force refresh
+        if (forceServer || (lastUpdate && lastUpdate !== localUpdate)) {
+          // Fetch baru!
+          const res = await fetch(`${API_BASE_URL}/mentoring-data`);
+          const json = await res.json();
+          const arr = Array.isArray(json) ? json : json.data || [];
+          setData(arr);
+          await AsyncStorage.setItem(
+            'cached_mentoring_data',
+            JSON.stringify(arr),
+          );
+          await AsyncStorage.setItem('mentoring_last_update', lastUpdate || '');
+        } else {
+          // Tidak ada perubahan, load dari cache saja
+          const cache = await AsyncStorage.getItem('cached_mentoring_data');
+          setData(cache ? JSON.parse(cache) : []);
+        }
+      } catch (err) {
+        const cache = await AsyncStorage.getItem('cached_mentoring_data');
+        setData(cache ? JSON.parse(cache) : []);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+        setSyncing(false);
+      }
+    },
+    [isConnected],
   );
 
-  // Pull to refresh handler
+  // Run auto sync sekali saat load, & setiap koneksi online lagi
+  useEffect(() => {
+    fetchDataAutoSync();
+    // Auto-poll background setiap 1 menit jika online
+    let interval;
+    if (isConnected) {
+      interval = setInterval(() => fetchDataAutoSync(), 60 * 1000);
+    }
+    return () => interval && clearInterval(interval);
+  }, [fetchDataAutoSync, isConnected]);
+
+  // Force Refresh button
+  const handleForceRefresh = async () => {
+    setSyncing(true);
+    await fetchDataAutoSync(true);
+    setSyncing(false);
+    ToastAndroid.show('Data di-refresh dari server!', ToastAndroid.SHORT);
+  };
+
+  // Pull to refresh (swipe down)
   const onRefresh = () => {
     setRefreshing(true);
-    fetchData();
+    fetchDataAutoSync(true);
   };
 
   // Expand/collapse card detail
@@ -88,8 +149,15 @@ export default function Data() {
     setExpandedId(prev => (prev === id ? null : id));
   };
 
-  // Handler tombol Edit
+  // Edit/Delete: Disable if offline or while syncing
   const handleEdit = (item: MentoringData) => {
+    if (!isConnected || syncing) {
+      Alert.alert(
+        'Offline',
+        'Edit hanya tersedia saat online & tidak sedang sync.',
+      );
+      return;
+    }
     Alert.alert(
       'Edit Data',
       `Apakah Anda ingin mengedit data untuk ${item.operator_name}?`,
@@ -104,9 +172,15 @@ export default function Data() {
     );
   };
 
-  // Handler tombol Hapus
   const handleDelete = useCallback(
     async (id: number) => {
+      if (!isConnected || syncing) {
+        Alert.alert(
+          'Offline',
+          'Hapus hanya tersedia saat online & tidak sedang sync.',
+        );
+        return;
+      }
       try {
         const token = await AsyncStorage.getItem('userToken');
         if (!token) return Alert.alert('Sesi Habis', 'Silakan login kembali.');
@@ -132,23 +206,21 @@ export default function Data() {
                 const json = JSON.parse(text);
                 if (json.success) {
                   Alert.alert('Sukses', json.message);
-                  fetchData();
+                  fetchDataAutoSync(true);
                 } else {
                   Alert.alert('Gagal', json.message || 'Gagal menghapus data.');
                 }
               } catch (err) {
-                console.error('Delete error:', err);
                 Alert.alert('Error', 'Terjadi kesalahan saat menghapus.');
               }
             },
           },
         ]);
       } catch (err) {
-        console.error(err);
         Alert.alert('Error', 'Terjadi kesalahan.');
       }
     },
-    [fetchData],
+    [fetchDataAutoSync, isConnected, syncing],
   );
 
   // Filter pencarian
@@ -161,7 +233,7 @@ export default function Data() {
     );
   });
 
-  // Pagination logic
+  // Pagination
   const totalPages = Math.ceil(filteredData.length / pageSize);
   const paginatedData = filteredData.slice(
     (page - 1) * pageSize,
@@ -180,19 +252,70 @@ export default function Data() {
     setExpandedId(null);
   }, [searchQuery, page, pageSize]);
 
-  // Loader/Spinner saat fetching
+  // Loader
   if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.center}>
         <ActivityIndicator size="large" color="#1E90FF" />
+        <Text style={{marginTop: 12}}>Memuat data...</Text>
       </SafeAreaView>
     );
   }
 
-  // Main render
+  // --- UI ---
   return (
     <SafeAreaView style={{flex: 1, backgroundColor: '#fff'}}>
       <View style={{flex: 1, paddingHorizontal: 8, paddingTop: 20}}>
+        {/* Status + Force Refresh */}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 8,
+          }}>
+          <View style={{alignItems: 'flex-end', flex: 1}}>
+            <Text
+              style={{
+                backgroundColor: isConnected ? '#d4edda' : '#f8d7da',
+                color: isConnected ? '#155724' : '#721c24',
+                paddingHorizontal: 12,
+                paddingVertical: 4,
+                borderRadius: 16,
+                fontWeight: 'bold',
+                fontSize: 13,
+                alignSelf: 'flex-end',
+              }}>
+              {isConnected ? '🟢 Online' : '🔴 Offline'}
+              {syncing && (
+                <ActivityIndicator
+                  size="small"
+                  color="#1E90FF"
+                  style={{marginLeft: 8, marginTop: 2}}
+                />
+              )}
+            </Text>
+          </View>
+          {isConnected && (
+            <TouchableOpacity
+              style={{
+                backgroundColor: syncing ? '#bbb' : '#1E90FF',
+                borderRadius: 8,
+                paddingVertical: 7,
+                paddingHorizontal: 16,
+                alignSelf: 'flex-end',
+                marginLeft: 12,
+                opacity: syncing ? 0.7 : 1,
+              }}
+              onPress={handleForceRefresh}
+              disabled={syncing}>
+              <Text style={{color: '#fff', fontWeight: 'bold', fontSize: 14}}>
+                Ambil Ulang dari Server
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         {/* Judul halaman */}
         <Text style={styles.pageTitle}>Data Mentoring</Text>
 
@@ -298,13 +421,21 @@ export default function Data() {
                     {/* Tombol Aksi */}
                     <View style={styles.cardActionRow}>
                       <TouchableOpacity
-                        style={styles.editButton}
-                        onPress={() => handleEdit(item)}>
+                        style={[
+                          styles.editButton,
+                          (!isConnected || syncing) && {opacity: 0.5},
+                        ]}
+                        onPress={() => handleEdit(item)}
+                        disabled={!isConnected || syncing}>
                         <Text style={styles.actionButtonText}>Edit</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={styles.deleteButton}
-                        onPress={() => handleDelete(item.id)}>
+                        style={[
+                          styles.deleteButton,
+                          (!isConnected || syncing) && {opacity: 0.5},
+                        ]}
+                        onPress={() => handleDelete(item.id)}
+                        disabled={!isConnected || syncing}>
                         <Text style={styles.actionButtonText}>Hapus</Text>
                       </TouchableOpacity>
                     </View>
@@ -323,11 +454,11 @@ export default function Data() {
             </Text>
           }
           contentContainerStyle={{
-            paddingBottom: 100 + insets.bottom, // Biar bawah tidak ketutup gesture bar/device navbar
+            paddingBottom: 100 + insets.bottom, // Supaya aman dari gesture bar
           }}
         />
 
-        {/* Pagination bar fix di bawah */}
+        {/* Pagination bar */}
         <View
           style={[
             styles.paginationContainer,
