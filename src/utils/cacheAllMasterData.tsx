@@ -3,7 +3,7 @@ import NetInfo from '@react-native-community/netinfo';
 import axios from 'axios';
 import API_BASE_URL from '../config';
 
-const TTL = 60 * 60 * 1000; // 1 jam (sebelumnya 10 menit)
+const TTL = 60 * 60 * 1000; // 1 jam
 const unitTypes = [3, 2, 5, 4];
 
 export const cacheAllMasterData = async () => {
@@ -14,12 +14,9 @@ export const cacheAllMasterData = async () => {
 
     const now = Date.now();
     const lastCache = await AsyncStorage.getItem('cache_master_last');
-    if (lastCache && now - Number(lastCache) < TTL) {
-      // Cache masih fresh, tidak perlu fetch ulang
-      return;
-    }
+    if (lastCache && now - Number(lastCache) < TTL) return;
 
-    // --- Prefetch semua indikator mentoring per tipe
+    // --- Cache indikator mentoring
     await Promise.all(
       unitTypes.map(async type => {
         try {
@@ -31,8 +28,6 @@ export const cacheAllMasterData = async () => {
             `mentoring_indicators_${type}`,
             JSON.stringify(indicators),
           );
-          // Log singkat, bisa dihapus di production
-          console.log('Cached indikator type', type);
         } catch (err) {
           console.log('Error cache indikator type', type, err?.message || err);
         }
@@ -51,24 +46,24 @@ export const cacheAllMasterData = async () => {
       console.log('Gagal cache KPI:', err?.message || err);
     }
 
-    // --- Cache Model dan Unit (hindari fetch ganda)
+    // --- Cache Model & Unit Dropdown
     try {
       const modelResp = await axios.get(`${API_BASE_URL}/getModelUnit`);
       const allModel = Array.isArray(modelResp.data)
         ? modelResp.data
         : modelResp.data.data || [];
       await AsyncStorage.setItem('cached_model_list', JSON.stringify(allModel));
-      // Dropdown unit (jika format sama, tinggal mapping ulang, tanpa fetch lagi)
       const unitList = allModel.map(u => ({
         label: u.model,
         value: String(u.id),
+        modelOnly: u.id,
       }));
       await AsyncStorage.setItem('dropdown_unit', JSON.stringify(unitList));
     } catch (err) {
       console.log('Gagal cache MODEL/UNIT:', err?.message || err);
     }
 
-    // --- Cache Activity Master
+    // --- Cache Activity
     try {
       const activityResp = await axios.get(`${API_BASE_URL}/getActivity/all`);
       const allActivity = activityResp.data?.data || [];
@@ -80,7 +75,27 @@ export const cacheAllMasterData = async () => {
       console.log('Gagal cache ACTIVITY:', err?.message || err);
     }
 
-    // --- Cache Daily List
+    // --- Cache Employee Login Info
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (token) {
+        const empResp = await axios.get(
+          `${API_BASE_URL}/dayActivities/createDailyAct`,
+          {headers: {Authorization: `Bearer ${token}`}},
+        );
+        const emp = empResp.data?.data?.employee;
+        if (emp) {
+          await AsyncStorage.setItem(
+            'cached_loggedin_employee',
+            JSON.stringify(emp),
+          );
+        }
+      }
+    } catch (err) {
+      console.log('Gagal cache EMPLOYEE:', err?.message || err);
+    }
+
+    // --- Cache lainnya
     try {
       const listResp = await axios.get(`${API_BASE_URL}/apiDayActAll`);
       const allDaily = Array.isArray(listResp.data)
@@ -94,7 +109,6 @@ export const cacheAllMasterData = async () => {
       console.log('Gagal cache DAILY LIST:', err?.message || err);
     }
 
-    // --- Cache All Operator
     try {
       const optResp = await axios.get(`${API_BASE_URL}/getEmployeeOperatorAll`);
       const allOpt = Array.isArray(optResp.data)
@@ -105,7 +119,6 @@ export const cacheAllMasterData = async () => {
       console.log('Gagal cache OPT LIST:', err?.message || err);
     }
 
-    // --- Cache Site (Master data untuk Add Mentoring)
     try {
       const siteResp = await axios.get(`${API_BASE_URL}/getSite`);
       await AsyncStorage.setItem(
@@ -116,7 +129,6 @@ export const cacheAllMasterData = async () => {
       console.log('Error caching master mentoring site:', e?.message || e);
     }
 
-    // --- Cache Unit List (all master unit)
     try {
       const unitResp = await axios.get(`${API_BASE_URL}/getMasterUnit`);
       const allUnit = Array.isArray(unitResp.data)
@@ -127,20 +139,29 @@ export const cacheAllMasterData = async () => {
       console.log('Gagal cache UNIT LIST:', err?.message || err);
     }
 
+    // --- Cache Train Hours Master
     try {
-      const trainResp = await axios.get(`${API_BASE_URL}/trainHoursCache`);
-      // Simpan semua data master trainHours (employeeAuth, typeUnit, classUnit, codeUnit, kpi)
-      await AsyncStorage.setItem(
-        'trainhours_master',
-        JSON.stringify(trainResp.data?.data || {}),
-      );
-      console.log('Train Hours master cached');
+      const token = await AsyncStorage.getItem('userToken');
+      if (token) {
+        const trainResp = await axios.get(`${API_BASE_URL}/trainHours/create`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        await AsyncStorage.setItem(
+          'trainhours_master',
+          JSON.stringify(trainResp.data?.data || {}),
+        );
+        console.log('✅ Train Hours master cached');
+      } else {
+        console.log('❌ Tidak ada token saat cache Train Hours');
+      }
     } catch (err) {
-      console.log('Gagal cache TRAIN HOURS:', err);
+      console.log('Gagal cache TRAIN HOURS:', err?.message || err);
     }
 
     await AsyncStorage.setItem('cache_master_last', String(now));
-    console.log('All master & list data cached/refreshed.');
+    console.log('✅ Master data cached.');
   } catch (err) {
     result.success = false;
     result.errors.push(err?.message || err);

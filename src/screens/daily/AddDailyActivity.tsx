@@ -86,10 +86,11 @@ const AddDailyActivity = () => {
   }, []);
 
   // ==== Fetch master data, prefill, & cache ====
+  // ... (import dan deklarasi lainnya tetap sama)
+
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const token = await AsyncStorage.getItem('userToken');
         const role = await AsyncStorage.getItem('userRole');
         const userString = await AsyncStorage.getItem('userData');
         const user = userString ? JSON.parse(userString) : null;
@@ -104,117 +105,43 @@ const AddDailyActivity = () => {
         setRole(role);
         setFormData(prev => ({
           ...prev,
-          jde_no: user.username || '',
-          employee_name: user.name || '',
           site: site,
         }));
 
-        // ==== KPI (dengan cache) ====
-        let kpiData = [];
-        try {
-          const kpiResp = await axios.get(`${API_BASE_URL}/getKPI`);
-          kpiData = (kpiResp.data?.data || []).map(kpi => ({
-            label: kpi.kpi,
-            value: String(kpi.id),
+        // Prefill employee dari cache
+        const empString = await AsyncStorage.getItem(
+          'cached_loggedin_employee',
+        );
+        const emp = empString ? JSON.parse(empString) : null;
+        if (emp) {
+          setFormData(prev => ({
+            ...prev,
+            jde_no: emp.EmployeeId || '',
+            employee_name: emp.EmployeeName || '',
           }));
-          setKpiOptions(kpiData);
-          await AsyncStorage.setItem('dropdown_kpi', JSON.stringify(kpiData));
-        } catch {
-          const cache = await AsyncStorage.getItem('dropdown_kpi');
-          if (cache) {
-            kpiData = JSON.parse(cache);
-            setKpiOptions(kpiData);
-            Alert.alert('Offline', 'Pilihan KPI diambil dari cache lokal.');
-          } else {
-            setKpiOptions([]);
-            Alert.alert(
-              'Offline',
-              'Tidak ada data KPI tersimpan di perangkat.',
-            );
-          }
         }
 
-        // ==== Activity (dengan cache) ====
-        let allAct = [];
-        try {
-          const activityResp = await axios.get(
-            `${API_BASE_URL}/getActivity/all`,
-          );
-          allAct = activityResp.data?.data || [];
-          await AsyncStorage.setItem(
-            'dropdown_activity_all',
-            JSON.stringify(allAct),
-          );
-        } catch {
-          const cache = await AsyncStorage.getItem('dropdown_activity_all');
-          if (cache) {
-            allAct = JSON.parse(cache);
-            Alert.alert(
-              'Offline',
-              'Pilihan Activity diambil dari cache lokal.',
-            );
-          } else {
-            allAct = [];
-            Alert.alert('Offline', 'Tidak ada data Activity di perangkat.');
-          }
-        }
+        // KPI
+        const kpiCache = await AsyncStorage.getItem('dropdown_kpi');
+        const kpiData = kpiCache ? JSON.parse(kpiCache) : [];
+        setKpiOptions(kpiData);
 
-        // ==== Unit (API atau cache) ====
-        let unitDataRaw = [];
-        try {
-          const dayActResp = await axios.get(
-            `${API_BASE_URL}/dayActivities/createDailyAct`,
-            {headers: {Authorization: `Bearer ${token}`}},
-          );
-          if (dayActResp.data.success) {
-            unitDataRaw = dayActResp.data.data.unit || [];
-            // mapping ke DropDownPicker
-            const unitData = unitDataRaw.map((item, index) => ({
-              label: item.model,
-              value: `${item.id}_${index}`,
-              modelOnly: item.id,
-            }));
-            setUnitOptions(unitData);
-            await AsyncStorage.setItem(
-              'dropdown_unit',
-              JSON.stringify(unitData),
-            );
-            // Prefill name/JDE
-            const emp = dayActResp.data.data.employee;
-            setFormData(prev => ({
-              ...prev,
-              jde_no: emp.EmployeeId || prev.jde_no,
-              employee_name: emp.EmployeeName || prev.employee_name,
-            }));
-          } else {
-            Alert.alert(
-              'Error',
-              dayActResp.data.message || 'Gagal mengambil data unit & employee',
-            );
-          }
-        } catch {
-          // Jika offline/fetch gagal, ambil cache
-          const cache = await AsyncStorage.getItem('dropdown_unit');
-          if (cache) {
-            const unitData = JSON.parse(cache);
-            setUnitOptions(unitData);
-            Alert.alert('Offline', 'Pilihan Unit diambil dari cache lokal.');
-          } else {
-            setUnitOptions([]);
-            Alert.alert(
-              'Offline',
-              'Tidak ada data Unit tersimpan di perangkat.',
-            );
-          }
-        }
+        // Activity
+        const actCache = await AsyncStorage.getItem('cached_all_activity');
+        const allAct = actCache ? JSON.parse(actCache) : [];
 
-        // Prefill activity for first KPI
+        // Unit
+        const unitCache = await AsyncStorage.getItem('dropdown_unit');
+        const unitData = unitCache ? JSON.parse(unitCache) : [];
+        setUnitOptions(unitData);
+
+        // Prefill KPI dan activity
         if (kpiData.length > 0) {
           const selectedKpiId = kpiData[0].value;
           setFormData(prev => ({...prev, kpi_type: selectedKpiId}));
           filterActivityByKpi(selectedKpiId, allAct, site);
         }
-      } catch (error) {
+      } catch (err) {
         Alert.alert('Error', 'Terjadi kesalahan saat mengambil data awal');
       }
     };
@@ -225,7 +152,7 @@ const AddDailyActivity = () => {
   const filterActivityByKpi = async (kpiId, allActParam = null, site = '') => {
     let allAct = allActParam;
     if (!allAct) {
-      const cache = await AsyncStorage.getItem('dropdown_activity_all');
+      const cache = await AsyncStorage.getItem('cached_all_activity');
       allAct = cache ? JSON.parse(cache) : [];
     }
     let filterSite = site;

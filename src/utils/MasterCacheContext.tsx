@@ -24,8 +24,9 @@ export const MasterCacheProvider: React.FC<MasterCacheProviderProps> = ({
 
   const forceUpdateMaster = useCallback(async () => {
     setIsCaching(true);
-    await cacheAllMasterData();
+    const result = await cacheAllMasterData();
     setIsCaching(false);
+    return result;
   }, []);
 
   return (

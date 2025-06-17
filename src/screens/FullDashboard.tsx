@@ -29,6 +29,7 @@ import NetInfo from '@react-native-community/netinfo';
 import {useQueryClient} from '@tanstack/react-query';
 import {cacheAllMasterData} from '../utils/cacheAllMasterData';
 import {OfflineQueueContext} from '../utils/OfflineQueueContext';
+import {MasterCacheContext} from '../utils/MasterCacheContext';
 
 if (!(global as any)._IS_NEW_ARCHITECTURE_ENABLED) {
   UIManager.setLayoutAnimationEnabledExperimental &&
@@ -136,7 +137,7 @@ const FullDashboard = ({navigation}: Props) => {
   const [summary, setSummary] = useState(defaultSummary);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [isConnected, setIsConnected] = useState(true);
-  const [isCachingMaster, setIsCachingMaster] = useState(false);
+  const {forceUpdateMaster, isCaching} = useContext(MasterCacheContext);
 
   // PROGRESS SYNC MODAL STATE
   const [syncVisible, setSyncVisible] = useState(false);
@@ -297,18 +298,15 @@ const FullDashboard = ({navigation}: Props) => {
 
   // Auto cache master
   useEffect(() => {
-    cacheAllMasterData();
+    forceUpdateMaster();
   }, []);
 
   // Force update master
   const handleForceUpdateMaster = async () => {
     try {
-      setIsCachingMaster(true);
-      await cacheAllMasterData();
-      setIsCachingMaster(false);
+      await forceUpdateMaster();
       ToastAndroid.show('Master data berhasil di-refresh!', ToastAndroid.SHORT);
     } catch (err) {
-      setIsCachingMaster(false);
       Alert.alert('Gagal', 'Refresh master gagal.\n' + (err?.message || ''));
     }
   };
@@ -343,15 +341,15 @@ const FullDashboard = ({navigation}: Props) => {
               <TouchableOpacity
                 style={[
                   styles.forceUpdateButton,
-                  isCachingMaster && styles.forceUpdateButtonDisabled,
+                  isCaching && styles.forceUpdateButtonDisabled,
                 ]}
                 onPress={handleForceUpdateMaster}
-                disabled={isCachingMaster}>
+                disabled={isCaching}>
                 <Icon name="refresh-outline" size={18} color="#fff" />
                 <Text style={styles.forceUpdateButtonText}>
                   Force Update Data
                 </Text>
-                {isCachingMaster && (
+                {isCaching && (
                   <ActivityIndicator
                     size={14}
                     color="#fff"
@@ -359,7 +357,7 @@ const FullDashboard = ({navigation}: Props) => {
                   />
                 )}
               </TouchableOpacity>
-              {isCachingMaster && (
+              {isCaching && (
                 <Text style={styles.forceUpdateStatus}>Syncing data...</Text>
               )}
             </View>

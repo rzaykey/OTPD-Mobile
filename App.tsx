@@ -1,4 +1,4 @@
-import React, {useEffect} from 'react';
+import React, {useEffect, useContext} from 'react';
 import {NavigationContainer} from '@react-navigation/native';
 import AppNavigator from './src/navigation/AppNavigator';
 
@@ -11,11 +11,12 @@ import {persistQueryClient} from '@tanstack/react-query-persist-client';
 import {createAsyncStoragePersister} from '@tanstack/query-async-storage-persister';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import {cacheAllMasterData} from './src/utils/cacheAllMasterData';
-import {OfflineQueueProvider} from './src/utils/OfflineQueueContext';
 
-// Import MasterCacheProvider
-import {MasterCacheProvider} from './src/utils/MasterCacheContext';
+import {OfflineQueueProvider} from './src/utils/OfflineQueueContext';
+import {
+  MasterCacheProvider,
+  MasterCacheContext,
+} from './src/utils/MasterCacheContext';
 
 // Setup React Query client & persistor
 const queryClient = new QueryClient();
@@ -25,7 +26,7 @@ const asyncStoragePersister = createAsyncStoragePersister({
 
 persistQueryClient({
   queryClient,
-  persister: asyncStoragePersister, // <-- gunakan persister
+  persister: asyncStoragePersister,
 });
 
 onlineManager.setEventListener(setOnline => {
@@ -34,18 +35,27 @@ onlineManager.setEventListener(setOnline => {
   });
 });
 
-const App = () => {
+// 🔄 Wrapper component to call forceUpdateMaster inside provider
+const AppInitWrapper = () => {
+  const {forceUpdateMaster} = useContext(MasterCacheContext);
+
   useEffect(() => {
-    cacheAllMasterData();
+    forceUpdateMaster();
   }, []);
 
+  return (
+    <NavigationContainer>
+      <AppNavigator />
+    </NavigationContainer>
+  );
+};
+
+const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <OfflineQueueProvider>
         <MasterCacheProvider>
-          <NavigationContainer>
-            <AppNavigator />
-          </NavigationContainer>
+          <AppInitWrapper />
         </MasterCacheProvider>
       </OfflineQueueProvider>
     </QueryClientProvider>

@@ -26,13 +26,11 @@ import API_BASE_URL from '../../config';
 
 const TRAINHOURS_QUEUE_KEY = 'trainhours_queue_offline';
 
-// Aktifkan animasi layout Android
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental &&
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// Collapsible Card Component
 const CollapsibleCard = ({title, children}) => {
   const [expanded, setExpanded] = useState(true);
   const toggleExpand = () => {
@@ -52,12 +50,9 @@ const CollapsibleCard = ({title, children}) => {
 const AddTrainHours = () => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-
-  // Offline queue context
   const {trainHoursQueueCount, pushTrainHoursQueue, syncing} =
     useContext(OfflineQueueContext);
 
-  // State utama
   const [formData, setFormData] = useState({
     jde_no: '',
     employee_name: '',
@@ -76,79 +71,61 @@ const AddTrainHours = () => {
     date_activity: '',
   });
 
-  // Dropdown states
   const [trainingTypeOptions, setTrainingTypeOptions] = useState([]);
   const [trainingTypeOpen, setTrainingTypeOpen] = useState(false);
   const [trainingTypeValue, setTrainingTypeValue] = useState(null);
-
   const [filteredClassUnitOptions, setFilteredClassUnitOptions] = useState([]);
   const [classUnitArr, setClassUnitArr] = useState([]);
   const [allCodeUnitArr, setAllCodeUnitArr] = useState([]);
   const [unitClassOpen, setUnitClassOpen] = useState(false);
-
   const [unitTypeOptions, setUnitTypeOptions] = useState([]);
   const [unitTypeOpen, setUnitTypeOpen] = useState(false);
-
   const [codeOptions, setCodeOptions] = useState([]);
   const [codeOpen, setCodeOpen] = useState(false);
-
-  const [batchOptions, setBatchOptions] = useState([
-    {label: 'Batch 1', value: 'Batch 1'},
-    {label: 'Batch 2', value: 'Batch 2'},
-    {label: 'Batch 3', value: 'Batch 3'},
-    {label: 'Batch 4', value: 'Batch 4'},
-    {label: 'Batch 5', value: 'Batch 5'},
-    {label: 'Batch 6', value: 'Batch 6'},
-    {label: 'Batch 7', value: 'Batch 7'},
-    {label: 'Batch 8', value: 'Batch 8'},
-    {label: 'Batch 9', value: 'Batch 9'},
-    {label: 'Batch 10', value: 'Batch 10'},
-  ]);
+  const [batchOptions, setBatchOptions] = useState(
+    [...Array(10)].map((_, i) => ({
+      label: `Batch ${i + 1}`,
+      value: `Batch ${i + 1}`,
+    })),
+  );
   const [batchOpen, setBatchOpen] = useState(false);
-
-  // State tanggal
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isConnected, setIsConnected] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ------------- Ambil MASTER: Cek online, fallback ke cache -------------
   useEffect(() => {
     const fetchMasterData = async () => {
       try {
         const net = await NetInfo.fetch();
         setIsConnected(net.isConnected === true);
-
         const userString = await AsyncStorage.getItem('userData');
         const user = userString ? JSON.parse(userString) : {};
 
         let master = null;
-        // 1. Kalau ONLINE: coba fetch API
         if (net.isConnected) {
           try {
             const token = await AsyncStorage.getItem('userToken');
             const response = await axios.get(
               `${API_BASE_URL}/trainHours/create`,
-              {headers: {Authorization: `Bearer ${token}`}},
+              {
+                headers: {Authorization: `Bearer ${token}`},
+              },
             );
             master = response.data?.data || {};
-            // Simpan ke cache (biar fresh)
             await AsyncStorage.setItem(
               'trainhours_master',
               JSON.stringify(master),
             );
           } catch (err) {
-            // Kalau gagal online, fallback ke cache
             const cache = await AsyncStorage.getItem('trainhours_master');
             if (cache) master = JSON.parse(cache);
           }
         } else {
-          // 2. Kalau OFFLINE: langsung dari cache
           const cache = await AsyncStorage.getItem('trainhours_master');
           if (cache) master = JSON.parse(cache);
         }
 
-        // Tidak dapat master? => error
         if (!master) {
           Alert.alert(
             'Offline',
@@ -157,7 +134,6 @@ const AddTrainHours = () => {
           return;
         }
 
-        // Set data employee (auto dari master.employeeAuth)
         if (master.employeeAuth) {
           setFormData(prev => ({
             ...prev,
@@ -179,14 +155,12 @@ const AddTrainHours = () => {
           }));
         }
 
-        // Type Unit
         const typeUnitArr = (master.typeUnit || []).map(item => ({
           label: item.class,
           value: item.id,
         }));
         setUnitTypeOptions(typeUnitArr);
 
-        // Class Unit (Model)
         const classArr = (master.classUnit || []).map(item => ({
           label: item.model,
           value: item.id,
@@ -195,7 +169,6 @@ const AddTrainHours = () => {
         }));
         setClassUnitArr(classArr);
 
-        // Code Unit (No Unit)
         const codeArr = (master.codeUnit || []).map(item => ({
           label: item.no_unit || item.NO_UNIT || item.code,
           value: item.id,
@@ -203,7 +176,6 @@ const AddTrainHours = () => {
         }));
         setAllCodeUnitArr(codeArr);
 
-        // KPI (training_type)
         const kpiArr = (master.kpi || []).map(item => ({
           label: item.kpi,
           value: item.id,
@@ -216,15 +188,8 @@ const AddTrainHours = () => {
     fetchMasterData();
   }, []);
 
-  // Handler cascading Unit Type
   const onChangeUnitType = val => {
-    setFormData(prev => ({
-      ...prev,
-      unit_type: val,
-      unit_class: '',
-      code: '',
-    }));
-    // Filter classUnitArr berdasarkan class === val
+    setFormData(prev => ({...prev, unit_type: val, unit_class: '', code: ''}));
     const filtered = classUnitArr.filter(
       item => String(item.class) === String(val),
     );
@@ -232,44 +197,30 @@ const AddTrainHours = () => {
     setCodeOptions([]);
   };
 
-  // Handler cascading Unit Class
   const onChangeUnitClass = val => {
-    setFormData(prev => ({
-      ...prev,
-      unit_class: val,
-      code: '',
-    }));
-    // Filter code berdasarkan fid_model === unit_class
+    setFormData(prev => ({...prev, unit_class: val, code: ''}));
     const filteredCode = allCodeUnitArr.filter(
       code => String(code.fid_model) === String(val),
     );
     setCodeOptions(filteredCode);
   };
 
-  // Training type (KPI)
   const onChangeTrainingType = val => {
     setTrainingTypeValue(val);
-    setFormData(prev => ({
-      ...prev,
-      training_type: val,
-    }));
+    setFormData(prev => ({...prev, training_type: val}));
   };
 
-  // Input handler
   const handleChange = (name, value) => {
     setFormData(prev => ({...prev, [name]: value}));
   };
 
-  // Date handler
   const handleDateChange = (_event, selected) => {
     const currentDate = selected || selectedDate;
     setShowDatePicker(Platform.OS === 'ios');
     setSelectedDate(currentDate);
-    const formatted = currentDate.toISOString().split('T')[0];
-    handleChange('date_activity', formatted);
+    handleChange('date_activity', currentDate.toISOString().split('T')[0]);
   };
 
-  // Otomatis hitung total_hm & progres
   useEffect(() => {
     const start = Number(formData.hm_start) || 0;
     const end = Number(formData.hm_end) || 0;
